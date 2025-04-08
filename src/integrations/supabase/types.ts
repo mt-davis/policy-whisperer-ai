@@ -77,7 +77,11 @@ export type Database = {
         Row: {
           content: string
           created_at: string
+          demographic_impact: string | null
           id: string
+          key_points: string[] | null
+          key_summary: string | null
+          local_impact: string | null
           source_reference: string | null
           source_type: string
           title: string
@@ -86,7 +90,11 @@ export type Database = {
         Insert: {
           content: string
           created_at?: string
+          demographic_impact?: string | null
           id?: string
+          key_points?: string[] | null
+          key_summary?: string | null
+          local_impact?: string | null
           source_reference?: string | null
           source_type: string
           title: string
@@ -95,7 +103,11 @@ export type Database = {
         Update: {
           content?: string
           created_at?: string
+          demographic_impact?: string | null
           id?: string
+          key_points?: string[] | null
+          key_summary?: string | null
+          local_impact?: string | null
           source_reference?: string | null
           source_type?: string
           title?: string
