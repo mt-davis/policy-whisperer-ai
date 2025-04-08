@@ -63,7 +63,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
           text: msg.content,
           sender: msg.sender as 'user' | 'ai',
           timestamp: new Date(msg.created_at),
-          isHtml: msg.sender === 'ai' && (msg.content.includes('<p>') || msg.content.includes('<ul>'))
+          isHtml: msg.sender === 'ai' && (msg.content.includes('<p>') || msg.content.includes('<ul>') || msg.content.includes('<ol>'))
         }));
         setMessages(formattedMessages);
       } else {
@@ -83,12 +83,37 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
 
   const formatAIResponse = (text: string): string => {
     // Check if the text is already in HTML format
-    if (text.includes('<p>') || text.includes('<ul>')) {
+    if (text.includes('<p>') || text.includes('<ul>') || text.includes('<ol>')) {
       return text;
     }
     
-    // Simple formatting for plain text
-    return `<p>${text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p>`;
+    // Simple formatting for plain text with paragraphs and line breaks
+    const formattedText = text
+      .split('\n\n')
+      .map(paragraph => {
+        // Check if this is a list item
+        if (paragraph.match(/^\d+\.\s/) || paragraph.match(/^-\s/) || paragraph.match(/^\*\s/)) {
+          // Convert numeric lists to ordered lists
+          if (paragraph.match(/^\d+\.\s/)) {
+            const items = paragraph.split(/\n(?=\d+\.\s)/).map(item => 
+              `<li>${item.replace(/^\d+\.\s/, '')}</li>`
+            ).join('');
+            return `<ol>${items}</ol>`;
+          } 
+          // Convert bullet lists to unordered lists
+          else {
+            const items = paragraph.split(/\n(?=[-*]\s)/).map(item => 
+              `<li>${item.replace(/^[-*]\s/, '')}</li>`
+            ).join('');
+            return `<ul>${items}</ul>`;
+          }
+        }
+        // Regular paragraph
+        return `<p>${paragraph.replace(/\n/g, '<br>')}</p>`;
+      })
+      .join('');
+    
+    return formattedText;
   };
 
   const handleSendMessage = async () => {

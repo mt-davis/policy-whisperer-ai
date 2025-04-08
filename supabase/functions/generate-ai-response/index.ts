@@ -20,7 +20,7 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, policyContent, conversationId } = await req.json();
+    const { prompt, policyContent, conversationId, formatAsHtml = true } = await req.json();
     
     if (!prompt) {
       throw new Error('Missing required field: prompt');
@@ -97,12 +97,25 @@ serve(async (req) => {
     // Prepare messages for OpenAI API
     const messages = [];
     
-    // Add system message with context
+    // Add system message with context and formatting instructions
+    const systemMessage = `You are an AI assistant specializing in policy analysis. 
+                Use the following policy content as context for your responses: 
+                ${context ? context.substring(0, 10000) : 'No specific policy content provided.'}`;
+    
+    const formattingInstructions = formatAsHtml ? 
+      `Format your responses using proper HTML tags for better readability:
+       - Use <p> tags for paragraphs
+       - Use <ul> and <li> tags for unordered lists
+       - Use <ol> and <li> tags for ordered lists
+       - Use <h3> tags for subheadings
+       - Use <b> or <strong> tags for emphasis
+       - When presenting steps or a numbered list, use an ordered list with <ol> and <li> tags
+       - For key points that aren't sequential, use an unordered list with <ul> and <li> tags
+       - Structure your content logically with clear sections` : '';
+    
     messages.push({ 
       role: 'system', 
-      content: `You are an AI assistant specializing in policy analysis. 
-                Use the following policy content as context for your responses: 
-                ${context ? context.substring(0, 10000) : 'No specific policy content provided.'}` 
+      content: systemMessage + (formatAsHtml ? '\n\n' + formattingInstructions : '')
     });
     
     // Add conversation history if available
