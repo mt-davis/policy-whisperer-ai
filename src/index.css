@@ -97,7 +97,9 @@
 }
 
 .chat-bubble {
-  @apply p-4 rounded-lg mb-4 max-w-[85%];
+  @apply p-4 rounded-lg mb-4 max-w-[85%] break-words;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .user-bubble {
@@ -118,4 +120,75 @@
 
 .typing-indicator span:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+/* Styling for HTML content */
+.html-content {
+  text-align: left;
+}
+
+.html-content p {
+  margin-bottom: 0.75rem;
+}
+
+.html-content p:last-child {
+  margin-bottom: 0;
+}
+
+.html-content ul, 
+.html-content ol {
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.html-content ul {
+  list-style-type: disc;
+}
+
+.html-content ol {
+  list-style-type: decimal;
+}
+
+.html-content li {
+  margin-bottom: 0.25rem;
+}
+
+.html-content a {
+  text-decoration: underline;
+}
+
+.html-content h1, 
+.html-content h2, 
+.html-content h3, 
+.html-content h4 {
+  font-weight: bold;
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.html-content h1 {
+  font-size: 1.5rem;
+}
+
+.html-content h2 {
+  font-size: 1.25rem;
+}
+
+.html-content h3 {
+  font-size: 1.125rem;
+}
+
+.html-content code {
+  font-family: monospace;
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.html-content pre {
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
 }

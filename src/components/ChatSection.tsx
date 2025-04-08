@@ -7,12 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import DOMPurify from 'dompurify';
 
 interface Message {
   id: string;
   text: string;
   sender: 'user' | 'ai';
   timestamp: Date;
+  isHtml?: boolean;
 }
 
 interface ChatSectionProps {
@@ -60,7 +62,8 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
           id: msg.id,
           text: msg.content,
           sender: msg.sender as 'user' | 'ai',
-          timestamp: new Date(msg.created_at)
+          timestamp: new Date(msg.created_at),
+          isHtml: msg.sender === 'ai' && (msg.content.includes('<p>') || msg.content.includes('<ul>'))
         }));
         setMessages(formattedMessages);
       } else {
@@ -76,6 +79,16 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
+  };
+
+  const formatAIResponse = (text: string): string => {
+    // Check if the text is already in HTML format
+    if (text.includes('<p>') || text.includes('<ul>')) {
+      return text;
+    }
+    
+    // Simple formatting for plain text
+    return `<p>${text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')}</p>`;
   };
 
   const handleSendMessage = async () => {
@@ -97,7 +110,8 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
         body: JSON.stringify({ 
           prompt: input, 
           policyContent, 
-          conversationId: activeConversationId
+          conversationId: activeConversationId,
+          formatAsHtml: true
         })
       });
 
@@ -110,11 +124,13 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
       if (activeConversationId) {
         await fetchMessages(activeConversationId);
       } else {
+        const formattedResponse = formatAIResponse(data.response || "I'm sorry, I couldn't generate a response.");
         const aiResponse: Message = {
           id: `ai-${Date.now()}`,
-          text: data.response || "I'm sorry, I couldn't generate a response.",
+          text: formattedResponse,
           sender: 'ai',
-          timestamp: new Date()
+          timestamp: new Date(),
+          isHtml: true
         };
         
         setMessages(prev => [...prev, aiResponse]);
@@ -149,9 +165,17 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
             {messages.map(message => (
               <div
                 key={message.id}
-                className={message.sender === 'user' ? 'user-bubble' : 'ai-bubble'}
+                className={`${message.sender === 'user' ? 'user-bubble' : 'ai-bubble'} ${message.isHtml ? 'html-content' : ''}`}
               >
-                {message.text}
+                {message.isHtml ? (
+                  <div 
+                    dangerouslySetInnerHTML={{ 
+                      __html: DOMPurify.sanitize(message.text) 
+                    }} 
+                  />
+                ) : (
+                  message.text
+                )}
               </div>
             ))}
             
