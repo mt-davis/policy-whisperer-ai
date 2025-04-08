@@ -10,6 +10,7 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || '';
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 serve(async (req) => {
@@ -25,8 +26,15 @@ serve(async (req) => {
       throw new Error('Missing required field: prompt');
     }
 
-    // First, store the user message in the database if a conversationId is provided
+    console.log('Processing AI response for prompt:', prompt.substring(0, 50) + '...');
+
+    // Get conversation history if conversationId is provided
+    let conversationHistory = [];
+    let context = policyContent;
+    let documentId = null;
+
     if (conversationId) {
+      // First, store the user message in the database
       const { error: messageError } = await supabase
         .from('messages')
         .insert({
@@ -38,53 +46,84 @@ serve(async (req) => {
       if (messageError) {
         throw messageError;
       }
+
+      // Get the conversation history
+      const { data: messagesData, error: messagesError } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+        .limit(10); // Limit to last 10 messages to stay within token limits
+
+      if (messagesError) {
+        throw messagesError;
+      }
+
+      if (messagesData && messagesData.length > 0) {
+        conversationHistory = messagesData.map(msg => ({
+          role: msg.sender === 'user' ? 'user' : 'assistant',
+          content: msg.content
+        }));
+      }
+
+      // Get policy content from database if not provided directly
+      if (!context) {
+        const { data: conversation, error: conversationError } = await supabase
+          .from('conversations')
+          .select('policy_document_id')
+          .eq('id', conversationId)
+          .single();
+
+        if (conversationError) {
+          throw conversationError;
+        }
+
+        documentId = conversation.policy_document_id;
+
+        const { data: document, error: documentError } = await supabase
+          .from('policy_documents')
+          .select('content')
+          .eq('id', documentId)
+          .single();
+
+        if (documentError) {
+          throw documentError;
+        }
+
+        context = document.content;
+      }
     }
 
-    // Get policy content from database if not provided directly
-    let context = policyContent;
-    if (!context && conversationId) {
-      const { data: conversation, error: conversationError } = await supabase
-        .from('conversations')
-        .select('policy_document_id')
-        .eq('id', conversationId)
-        .single();
-
-      if (conversationError) {
-        throw conversationError;
-      }
-
-      const { data: document, error: documentError } = await supabase
-        .from('policy_documents')
-        .select('content')
-        .eq('id', conversation.policy_document_id)
-        .single();
-
-      if (documentError) {
-        throw documentError;
-      }
-
-      context = document.content;
+    // Prepare messages for OpenAI API
+    const messages = [];
+    
+    // Add system message with context
+    messages.push({ 
+      role: 'system', 
+      content: `You are an AI assistant specializing in policy analysis. 
+                Use the following policy content as context for your responses: 
+                ${context ? context.substring(0, 10000) : 'No specific policy content provided.'}` 
+    });
+    
+    // Add conversation history if available
+    if (conversationHistory.length > 0) {
+      messages.push(...conversationHistory);
+    } else {
+      // If no history, just add the current prompt
+      messages.push({ role: 'user', content: prompt });
     }
 
     // Generate AI response
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        messages: [
-          { 
-            role: 'system', 
-            content: `You are an AI assistant specializing in policy analysis. 
-                      Use the following policy content as context for your responses: 
-                      ${context || 'No specific policy content provided.'}` 
-          },
-          { role: 'user', content: prompt }
-        ],
-        max_tokens: 500
+        messages: messages,
+        max_tokens: 800
       }),
     });
 

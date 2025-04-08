@@ -17,7 +17,54 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [isFetchingUrl, setIsFetchingUrl] = useState(false);
   const { toast } = useToast();
+
+  const fetchContentFromUrl = async (urlToFetch: string) => {
+    setIsFetchingUrl(true);
+    try {
+      const response = await fetch(urlToFetch);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+      }
+      
+      // Try to determine content type
+      const contentType = response.headers.get('content-type') || '';
+      let content = '';
+      
+      if (contentType.includes('text/html')) {
+        // For HTML, we'll extract the text content
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Remove script and style elements
+        const scripts = doc.getElementsByTagName('script');
+        const styles = doc.getElementsByTagName('style');
+        
+        for (let i = scripts.length - 1; i >= 0; i--) {
+          scripts[i].parentNode?.removeChild(scripts[i]);
+        }
+        
+        for (let i = styles.length - 1; i >= 0; i--) {
+          styles[i].parentNode?.removeChild(styles[i]);
+        }
+        
+        // Extract text from body
+        content = doc.body.textContent || '';
+      } else {
+        // For other text formats, just get the raw text
+        content = await response.text();
+      }
+      
+      return content;
+    } catch (error) {
+      console.error('Error fetching URL:', error);
+      throw error;
+    } finally {
+      setIsFetchingUrl(false);
+    }
+  };
 
   const processContent = async (content: string, sourceType: string, sourceReference?: string) => {
     try {
@@ -66,10 +113,28 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
       return;
     }
     
-    // In a real app, we would fetch the content from the URL here
-    // For now, we'll simulate processing the URL
-    const content = `Content fetched from URL: ${url}`;
-    await processContent(content, 'url', url);
+    try {
+      // Add https:// if the URL doesn't have a protocol
+      let urlToFetch = url;
+      if (!/^https?:\/\//i.test(url)) {
+        urlToFetch = 'https://' + url;
+      }
+      
+      // Actually fetch the content from the URL
+      const content = await fetchContentFromUrl(urlToFetch);
+      if (!content || content.trim().length < 10) {
+        throw new Error('Could not extract meaningful content from the URL');
+      }
+      
+      await processContent(content, 'url', urlToFetch);
+    } catch (error) {
+      console.error('Error processing URL:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to process URL content",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleTextSubmit = async () => {
@@ -162,11 +227,11 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
               className="mb-4"
             />
           </div>
-          <Button onClick={handleUrlSubmit} disabled={isProcessing} className="w-full">
-            {isProcessing ? (
+          <Button onClick={handleUrlSubmit} disabled={isProcessing || isFetchingUrl} className="w-full">
+            {isProcessing || isFetchingUrl ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing...
+                {isFetchingUrl ? "Fetching URL..." : "Processing..."}
               </>
             ) : (
               "Analyze Document"

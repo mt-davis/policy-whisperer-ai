@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Info, TrendingUp, Users } from 'lucide-react';
+import { FileText, Info, TrendingUp, Users, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -14,8 +14,15 @@ interface SummarySectionProps {
 
 type PolicyDocumentRow = Database['public']['Tables']['policy_documents']['Row'];
 
+interface PolicyDocument extends PolicyDocumentRow {
+  key_summary?: string;
+  key_points?: string[];
+  local_impact?: string;
+  demographic_impact?: string;
+}
+
 const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source, documentId }) => {
-  const [document, setDocument] = useState<PolicyDocumentRow | null>(null);
+  const [document, setDocument] = useState<PolicyDocument | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
   // Fetch document data if a documentId is provided
@@ -35,29 +42,13 @@ const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source, 
         .single();
       
       if (error) throw error;
-      setDocument(data);
+      setDocument(data as PolicyDocument);
     } catch (error) {
       console.error('Error fetching document:', error);
     } finally {
       setIsLoading(false);
     }
   };
-
-  // In a real app, we would process the policy content to generate these summaries
-  // For now, we'll use placeholder content
-  
-  const keySummary = "This policy aims to reduce carbon emissions by 30% by 2030 through a combination of regulatory measures and incentives for renewable energy adoption.";
-  
-  const keyPoints = [
-    "Establishes a carbon tax of $25 per ton starting in 2023",
-    "Creates tax incentives for renewable energy investments",
-    "Mandates emission reporting for companies with over 500 employees",
-    "Allocates $2 billion for green infrastructure projects"
-  ];
-  
-  const localImpact = "Based on regional economic indicators, this policy is likely to create 5,000 new jobs in the renewable energy sector while potentially impacting 1,200 jobs in traditional energy industries.";
-  
-  const demographicImpact = "Lower-income households may experience a 2-3% increase in energy costs in the short term, offset by tax rebates. Small businesses with high energy usage will be eligible for transition assistance programs.";
 
   const getSourceText = () => {
     if (document) {
@@ -86,6 +77,32 @@ const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source, 
       return "Source: Unknown";
     }
   };
+
+  // Use real data if available, otherwise fallback to placeholders
+  const keySummary = document?.key_summary || 
+    "This policy aims to reduce carbon emissions by 30% by 2030 through a combination of regulatory measures and incentives for renewable energy adoption.";
+  
+  const keyPoints = document?.key_points || [
+    "Establishes a carbon tax of $25 per ton starting in 2023",
+    "Creates tax incentives for renewable energy investments",
+    "Mandates emission reporting for companies with over 500 employees",
+    "Allocates $2 billion for green infrastructure projects"
+  ];
+  
+  const localImpact = document?.local_impact || 
+    "Based on regional economic indicators, this policy is likely to create 5,000 new jobs in the renewable energy sector while potentially impacting 1,200 jobs in traditional energy industries.";
+  
+  const demographicImpact = document?.demographic_impact || 
+    "Lower-income households may experience a 2-3% increase in energy costs in the short term, offset by tax rebates. Small businesses with high energy usage will be eligible for transition assistance programs.";
+
+  if (isLoading) {
+    return (
+      <Card className="w-full h-[600px] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="mt-2 text-gray-600">Loading analysis...</p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full">
