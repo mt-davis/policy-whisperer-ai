@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 
 interface Message {
   id: string;
@@ -17,6 +19,8 @@ interface ChatSectionProps {
   policyContent?: string;
   conversationId?: string;
 }
+
+type MessageRow = Database['public']['Tables']['messages']['Row'];
 
 const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -52,7 +56,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
       if (error) throw error;
       
       if (data && data.length > 0) {
-        const formattedMessages: Message[] = data.map(msg => ({
+        const formattedMessages: Message[] = data.map((msg: MessageRow) => ({
           id: msg.id,
           text: msg.content,
           sender: msg.sender as 'user' | 'ai',

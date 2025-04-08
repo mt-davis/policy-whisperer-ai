@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Info, TrendingUp, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 
 interface SummarySectionProps {
   policyContent?: string;
@@ -11,8 +12,10 @@ interface SummarySectionProps {
   documentId?: string;
 }
 
+type PolicyDocumentRow = Database['public']['Tables']['policy_documents']['Row'];
+
 const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source, documentId }) => {
-  const [document, setDocument] = useState<any>(null);
+  const [document, setDocument] = useState<PolicyDocumentRow | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
   // Fetch document data if a documentId is provided
