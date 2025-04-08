@@ -108,6 +108,7 @@
 
 .ai-bubble {
   @apply chat-bubble bg-secondary text-white;
+  overflow-x: hidden;
 }
 
 .typing-indicator span {
@@ -122,9 +123,20 @@
   animation-delay: 0.4s;
 }
 
+.chat-scroll-area {
+  scroll-behavior: smooth;
+}
+
+.chat-scroll-area [data-radix-scroll-area-viewport] > div {
+  display: flex;
+  flex-direction: column;
+}
+
 /* Styling for HTML content */
 .html-content {
   text-align: left;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .html-content p {

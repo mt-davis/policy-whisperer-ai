@@ -151,16 +151,17 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
   };
 
   useEffect(() => {
+    // Scroll to the bottom when messages change
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   return (
     <Card className="w-full h-[600px] flex flex-col">
-      <CardHeader>
+      <CardHeader className="pb-3">
         <CardTitle className="text-primary">Ask About This Policy</CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col">
-        <ScrollArea className="flex-1 px-1 mb-4">
+      <CardContent className="flex-1 flex flex-col overflow-hidden p-4">
+        <ScrollArea className="flex-1 pr-4 mb-4 max-h-[480px] overflow-y-auto chat-scroll-area">
           <div className="space-y-4">
             {messages.map(message => (
               <div
@@ -191,7 +192,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId
           </div>
         </ScrollArea>
         
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-2">
           <Input
             placeholder="Ask a question about this policy..."
             value={input}
