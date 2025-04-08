@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.process-policy-document]
 verify_jwt = false
+
+[functions.fetch-url-content]
+verify_jwt = false

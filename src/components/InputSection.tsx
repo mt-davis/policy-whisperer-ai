@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Upload, Link, FileText, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,41 +22,19 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
   const fetchContentFromUrl = async (urlToFetch: string) => {
     setIsFetchingUrl(true);
     try {
-      const response = await fetch(urlToFetch);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+      const { data, error } = await supabase.functions.invoke('fetch-url-content', {
+        body: { url: urlToFetch }
+      });
+      
+      if (error) {
+        throw error;
       }
       
-      // Try to determine content type
-      const contentType = response.headers.get('content-type') || '';
-      let content = '';
-      
-      if (contentType.includes('text/html')) {
-        // For HTML, we'll extract the text content
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        
-        // Remove script and style elements
-        const scripts = doc.getElementsByTagName('script');
-        const styles = doc.getElementsByTagName('style');
-        
-        for (let i = scripts.length - 1; i >= 0; i--) {
-          scripts[i].parentNode?.removeChild(scripts[i]);
-        }
-        
-        for (let i = styles.length - 1; i >= 0; i--) {
-          styles[i].parentNode?.removeChild(styles[i]);
-        }
-        
-        // Extract text from body
-        content = doc.body.textContent || '';
-      } else {
-        // For other text formats, just get the raw text
-        content = await response.text();
+      if (!data.content || data.content.trim().length < 10) {
+        throw new Error('Could not extract meaningful content from the URL');
       }
       
-      return content;
+      return data.content;
     } catch (error) {
       console.error('Error fetching URL:', error);
       throw error;
@@ -68,7 +45,6 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
 
   const processContent = async (content: string, sourceType: string, sourceReference?: string) => {
     try {
-      // Sanitize content to handle any problematic characters
       const sanitizedContent = content
         .replace(/\u0000/g, '') // Remove null bytes
         .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[^\x00-\x7F]/g, char => {
@@ -95,7 +71,6 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
         throw error;
       }
 
-      // Call the onProcess callback with the content and document/conversation IDs
       onProcess(
         content, 
         sourceType, 
@@ -128,18 +103,12 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
     }
     
     try {
-      // Add https:// if the URL doesn't have a protocol
       let urlToFetch = url;
       if (!/^https?:\/\//i.test(url)) {
         urlToFetch = 'https://' + url;
       }
       
-      // Actually fetch the content from the URL
       const content = await fetchContentFromUrl(urlToFetch);
-      if (!content || content.trim().length < 10) {
-        throw new Error('Could not extract meaningful content from the URL');
-      }
-      
       await processContent(content, 'url', urlToFetch);
     } catch (error) {
       console.error('Error processing URL:', error);
@@ -181,10 +150,9 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
     }
 
     try {
-      // Read file as text for text files only
       if (file.type.includes('text') || 
-          file.name.endsWith('.txt') || 
-          file.name.endsWith('.md')) {
+        file.name.endsWith('.txt') || 
+        file.name.endsWith('.md')) {
         const fileContent = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => {
@@ -200,7 +168,6 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
         
         await processContent(fileContent, 'file', file.name);
       } else {
-        // For non-text files, we'd need a different approach
         toast({
           title: "File type not supported",
           description: "Currently only text files (.txt) are supported",
