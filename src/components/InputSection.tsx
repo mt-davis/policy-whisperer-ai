@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface InputSectionProps {
-  onProcess: (text: string, source: string) => void;
+  onProcess: (text: string, source: string, documentId?: string, conversationId?: string) => void;
   isProcessing: boolean;
 }
 
@@ -18,7 +19,44 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
   const [file, setFile] = useState<File | null>(null);
   const { toast } = useToast();
 
-  const handleUrlSubmit = () => {
+  const processContent = async (content: string, sourceType: string, sourceReference?: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('process-policy-document', {
+        body: { 
+          content,
+          sourceType,
+          sourceReference: sourceReference || '',
+          title: sourceType === 'url' ? sourceReference : 
+                 sourceType === 'file' ? file?.name || 'Uploaded Document' : 
+                 'Pasted Text Document'
+        }
+      });
+
+      if (error) throw error;
+
+      // Call the onProcess callback with the content and document/conversation IDs
+      onProcess(
+        content, 
+        sourceType, 
+        data.document.id, 
+        data.conversation.id
+      );
+      
+      toast({
+        title: "Success",
+        description: "Document has been processed successfully",
+      });
+    } catch (error) {
+      console.error('Error processing document:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process document. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUrlSubmit = async () => {
     if (!url.trim()) {
       toast({
         title: "Error",
@@ -30,10 +68,11 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
     
     // In a real app, we would fetch the content from the URL here
     // For now, we'll simulate processing the URL
-    onProcess(`Content from URL: ${url}`, 'url');
+    const content = `Content fetched from URL: ${url}`;
+    await processContent(content, 'url', url);
   };
 
-  const handleTextSubmit = () => {
+  const handleTextSubmit = async () => {
     if (!text.trim()) {
       toast({
         title: "Error",
@@ -43,7 +82,7 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
       return;
     }
     
-    onProcess(text, 'text');
+    await processContent(text, 'text');
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,7 +91,7 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
     }
   };
 
-  const handleFileSubmit = () => {
+  const handleFileSubmit = async () => {
     if (!file) {
       toast({
         title: "Error",
@@ -62,9 +101,30 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
       return;
     }
 
-    // In a real app, we would read and process the file here
-    // For now, we'll simulate processing the file
-    onProcess(`Content from file: ${file.name}`, 'file');
+    try {
+      // Read file content
+      const fileContent = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (e.target?.result) {
+            resolve(e.target.result as string);
+          } else {
+            reject(new Error('Failed to read file'));
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsText(file);
+      });
+      
+      await processContent(fileContent, 'file', file.name);
+    } catch (error) {
+      console.error('Error reading file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to read file content",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

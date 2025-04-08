@@ -1,1 +1,8 @@
+
 project_id = "cyzpqzvrssgamdtqvyze"
+
+[functions.generate-ai-response]
+verify_jwt = false
+
+[functions.process-policy-document]
+verify_jwt = false

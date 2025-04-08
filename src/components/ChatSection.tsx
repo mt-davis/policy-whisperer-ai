@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -8,35 +7,78 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from '@/integrations/supabase/client';
 
 interface Message {
-  id: number;
+  id: string;
   text: string;
   sender: 'user' | 'ai';
   timestamp: Date;
 }
 
 interface ChatSectionProps {
-  policyContent: string;
+  policyContent?: string;
+  conversationId?: string;
 }
 
-const ChatSection: React.FC<ChatSectionProps> = ({ policyContent }) => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      text: "I've analyzed the policy document. What questions do you have about it?",
-      sender: 'ai',
-      timestamp: new Date()
-    }
-  ]);
+const ChatSection: React.FC<ChatSectionProps> = ({ policyContent, conversationId }) => {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(conversationId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (conversationId) {
+      setActiveConversationId(conversationId);
+      fetchMessages(conversationId);
+    } else {
+      setMessages([
+        {
+          id: '1',
+          text: "I've analyzed the policy document. What questions do you have about it?",
+          sender: 'ai',
+          timestamp: new Date()
+        }
+      ]);
+    }
+  }, [conversationId]);
+
+  const fetchMessages = async (convId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', convId)
+        .order('created_at', { ascending: true });
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const formattedMessages: Message[] = data.map(msg => ({
+          id: msg.id,
+          text: msg.content,
+          sender: msg.sender as 'user' | 'ai',
+          timestamp: new Date(msg.created_at)
+        }));
+        setMessages(formattedMessages);
+      } else {
+        setMessages([
+          {
+            id: '1',
+            text: "I've analyzed the policy document. What questions do you have about it?",
+            sender: 'ai',
+            timestamp: new Date()
+          }
+        ]);
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!input.trim()) return;
     
-    // Add user message
     const userMessage: Message = {
-      id: messages.length + 1,
+      id: `temp-${Date.now()}`,
       text: input,
       sender: 'user',
       timestamp: new Date()
@@ -47,28 +89,36 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent }) => {
     setIsTyping(true);
     
     try {
-      // Call Supabase Edge Function to get AI response
       const { data, error } = await supabase.functions.invoke('generate-ai-response', {
         body: JSON.stringify({ 
           prompt: input, 
-          policyContent: policyContent 
+          policyContent, 
+          conversationId: activeConversationId
         })
       });
 
       if (error) throw error;
 
-      const aiResponse: Message = {
-        id: messages.length + 2,
-        text: data.response || "I'm sorry, I couldn't generate a response.",
-        sender: 'ai',
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, aiResponse]);
+      if (data.conversationId && !activeConversationId) {
+        setActiveConversationId(data.conversationId);
+      }
+
+      if (activeConversationId) {
+        await fetchMessages(activeConversationId);
+      } else {
+        const aiResponse: Message = {
+          id: `ai-${Date.now()}`,
+          text: data.response || "I'm sorry, I couldn't generate a response.",
+          sender: 'ai',
+          timestamp: new Date()
+        };
+        
+        setMessages(prev => [...prev, aiResponse]);
+      }
     } catch (error) {
       console.error('Error generating AI response:', error);
       const errorMessage: Message = {
-        id: messages.length + 2,
+        id: `error-${Date.now()}`,
         text: "Sorry, there was an error processing your request.",
         sender: 'ai',
         timestamp: new Date()
@@ -80,7 +130,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent }) => {
     }
   };
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);

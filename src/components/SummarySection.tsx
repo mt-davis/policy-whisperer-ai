@@ -1,15 +1,45 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Info, TrendingUp, Users } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface SummarySectionProps {
-  policyContent: string;
-  source: string;
+  policyContent?: string;
+  source?: string;
+  documentId?: string;
 }
 
-const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source }) => {
+const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source, documentId }) => {
+  const [document, setDocument] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Fetch document data if a documentId is provided
+  useEffect(() => {
+    if (documentId) {
+      fetchDocument(documentId);
+    }
+  }, [documentId]);
+  
+  const fetchDocument = async (docId: string) => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('policy_documents')
+        .select('*')
+        .eq('id', docId)
+        .single();
+      
+      if (error) throw error;
+      setDocument(data);
+    } catch (error) {
+      console.error('Error fetching document:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // In a real app, we would process the policy content to generate these summaries
   // For now, we'll use placeholder content
   
@@ -27,15 +57,30 @@ const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source }
   const demographicImpact = "Lower-income households may experience a 2-3% increase in energy costs in the short term, offset by tax rebates. Small businesses with high energy usage will be eligible for transition assistance programs.";
 
   const getSourceText = () => {
-    switch (source) {
-      case 'url':
-        return "Extracted from provided URL";
-      case 'file':
-        return "Extracted from uploaded document";
-      case 'text':
-        return "Analyzed from pasted text";
-      default:
-        return "Source: Unknown";
+    if (document) {
+      switch (document.source_type) {
+        case 'url':
+          return `Extracted from URL: ${document.source_reference}`;
+        case 'file':
+          return `Extracted from file: ${document.source_reference}`;
+        case 'text':
+          return "Analyzed from pasted text";
+        default:
+          return "Source: Unknown";
+      }
+    } else if (source) {
+      switch (source) {
+        case 'url':
+          return "Extracted from provided URL";
+        case 'file':
+          return "Extracted from uploaded document";
+        case 'text':
+          return "Analyzed from pasted text";
+        default:
+          return "Source: Unknown";
+      }
+    } else {
+      return "Source: Unknown";
     }
   };
 

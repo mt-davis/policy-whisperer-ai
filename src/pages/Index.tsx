@@ -12,17 +12,25 @@ const Index = () => {
   const [contentSource, setContentSource] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [documentId, setDocumentId] = useState<string | undefined>();
+  const [conversationId, setConversationId] = useState<string | undefined>();
 
-  const handleProcessContent = (content: string, source: string) => {
+  const handleProcessContent = (
+    content: string, 
+    source: string, 
+    docId?: string,
+    convId?: string
+  ) => {
     setIsProcessing(true);
     
-    // Simulate processing delay
-    setTimeout(() => {
-      setPolicyContent(content);
-      setContentSource(source);
-      setIsProcessing(false);
-      setShowResults(true);
-    }, 2000);
+    // Store the content and IDs
+    setPolicyContent(content);
+    setContentSource(source);
+    if (docId) setDocumentId(docId);
+    if (convId) setConversationId(convId);
+    
+    setIsProcessing(false);
+    setShowResults(true);
   };
 
   return (
@@ -85,16 +93,24 @@ const Index = () => {
               <SummarySection 
                 policyContent={policyContent}
                 source={contentSource}
+                documentId={documentId}
               />
               
               <ChatSection 
                 policyContent={policyContent}
+                conversationId={conversationId}
               />
             </div>
             
             <div className="flex justify-center mt-8">
               <button
-                onClick={() => setShowResults(false)}
+                onClick={() => {
+                  setShowResults(false);
+                  setPolicyContent('');
+                  setContentSource('');
+                  setDocumentId(undefined);
+                  setConversationId(undefined);
+                }}
                 className="text-primary hover:text-primary-dark underline"
               >
                 Analyze another document
