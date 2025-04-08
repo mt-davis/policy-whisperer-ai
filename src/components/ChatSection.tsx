@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { supabase } from '@/integrations/supabase/client';
 
 interface Message {
   id: number;
@@ -30,26 +31,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent }) => {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Sample AI responses based on user queries
-  const getAIResponse = (userMessage: string): string => {
-    const normalizedMessage = userMessage.toLowerCase();
-    
-    // In a real app, we would integrate with an actual AI model
-    // For now, we'll use some pre-defined responses
-    if (normalizedMessage.includes('impact') && normalizedMessage.includes('local')) {
-      return "Based on my analysis, this policy would likely impact your local area in several ways. Local businesses may need to adapt to new reporting requirements, but could also benefit from the $2 billion infrastructure investment, particularly if they're in the construction or renewable energy sectors.";
-    } else if (normalizedMessage.includes('timeline') || normalizedMessage.includes('when')) {
-      return "The policy implementation is staggered: carbon tax begins in January 2023, reporting requirements start in July 2023, and the infrastructure projects will be awarded through a competitive process over the next 3 years.";
-    } else if (normalizedMessage.includes('cost') || normalizedMessage.includes('expense')) {
-      return "For the average household, this policy may increase energy costs by approximately $150-300 per year initially. However, the tax rebate program should offset this for households earning under $75,000 annually. For businesses, costs will vary significantly based on energy usage and emissions levels.";
-    } else if (normalizedMessage.includes('benefit') || normalizedMessage.includes('advantage')) {
-      return "The primary benefits include improved air quality, estimated creation of 5,000 new jobs in green sectors, and long-term energy cost stability. Additionally, the policy includes provisions for workforce development programs to help workers transition from fossil fuel industries.";
-    } else {
-      return "That's an interesting question about the policy. Based on my analysis, the policy aims to balance economic growth with environmental protection through a mix of incentives and regulations. Could you specify which aspect you'd like me to elaborate on?";
-    }
-  };
-
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!input.trim()) return;
     
     // Add user message
@@ -64,18 +46,38 @@ const ChatSection: React.FC<ChatSectionProps> = ({ policyContent }) => {
     setInput('');
     setIsTyping(true);
     
-    // Simulate AI thinking and responding
-    setTimeout(() => {
+    try {
+      // Call Supabase Edge Function to get AI response
+      const { data, error } = await supabase.functions.invoke('generate-ai-response', {
+        body: JSON.stringify({ 
+          prompt: input, 
+          policyContent: policyContent 
+        })
+      });
+
+      if (error) throw error;
+
       const aiResponse: Message = {
         id: messages.length + 2,
-        text: getAIResponse(input),
+        text: data.response || "I'm sorry, I couldn't generate a response.",
         sender: 'ai',
         timestamp: new Date()
       };
       
       setMessages(prev => [...prev, aiResponse]);
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      const errorMessage: Message = {
+        id: messages.length + 2,
+        text: "Sorry, there was an error processing your request.",
+        sender: 'ai',
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   // Auto-scroll to bottom when messages change
