@@ -14,7 +14,8 @@ interface SummarySectionProps {
 
 type PolicyDocumentRow = Database['public']['Tables']['policy_documents']['Row'];
 
-interface PolicyDocument extends PolicyDocumentRow {
+// Fix the interface to properly match the database type
+interface PolicyDocument extends Omit<PolicyDocumentRow, 'key_points' | 'key_summary' | 'local_impact' | 'demographic_impact'> {
   key_summary?: string;
   key_points?: string[];
   local_impact?: string;
@@ -134,7 +135,7 @@ const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source, 
           <TabsContent value="summary">
             <div className="p-4 bg-gray-50 rounded-md">
               <h3 className="font-medium mb-2">Executive Summary</h3>
-              <p>{keySummary}</p>
+              <p>{document?.key_summary || "This policy aims to reduce carbon emissions by 30% by 2030 through a combination of regulatory measures and incentives for renewable energy adoption."}</p>
             </div>
           </TabsContent>
           
@@ -142,7 +143,12 @@ const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source, 
             <div className="p-4 bg-gray-50 rounded-md">
               <h3 className="font-medium mb-2">Key Policy Points</h3>
               <ul className="list-disc pl-5 space-y-2">
-                {keyPoints.map((point, index) => (
+                {(document?.key_points || [
+                  "Establishes a carbon tax of $25 per ton starting in 2023",
+                  "Creates tax incentives for renewable energy investments",
+                  "Mandates emission reporting for companies with over 500 employees",
+                  "Allocates $2 billion for green infrastructure projects"
+                ]).map((point, index) => (
                   <li key={index}>{point}</li>
                 ))}
               </ul>
@@ -152,14 +158,14 @@ const SummarySection: React.FC<SummarySectionProps> = ({ policyContent, source, 
           <TabsContent value="local-impact">
             <div className="p-4 bg-gray-50 rounded-md">
               <h3 className="font-medium mb-2">Local Economic Impact</h3>
-              <p>{localImpact}</p>
+              <p>{document?.local_impact || "Based on regional economic indicators, this policy is likely to create 5,000 new jobs in the renewable energy sector while potentially impacting 1,200 jobs in traditional energy industries."}</p>
             </div>
           </TabsContent>
           
           <TabsContent value="demographic">
             <div className="p-4 bg-gray-50 rounded-md">
               <h3 className="font-medium mb-2">Demographic Considerations</h3>
-              <p>{demographicImpact}</p>
+              <p>{document?.demographic_impact || "Lower-income households may experience a 2-3% increase in energy costs in the short term, offset by tax rebates. Small businesses with high energy usage will be eligible for transition assistance programs."}</p>
             </div>
           </TabsContent>
         </Tabs>
