@@ -68,9 +68,20 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
 
   const processContent = async (content: string, sourceType: string, sourceReference?: string) => {
     try {
+      // Sanitize content to handle any problematic characters
+      const sanitizedContent = content
+        .replace(/\u0000/g, '') // Remove null bytes
+        .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[^\x00-\x7F]/g, char => {
+          try {
+            return encodeURIComponent(char);
+          } catch (e) {
+            return '';
+          }
+        });
+
       const { data, error } = await supabase.functions.invoke('process-policy-document', {
         body: { 
-          content,
+          content: sanitizedContent,
           sourceType,
           sourceReference: sourceReference || '',
           title: sourceType === 'url' ? sourceReference : 
@@ -79,7 +90,10 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Function error:', error);
+        throw error;
+      }
 
       // Call the onProcess callback with the content and document/conversation IDs
       onProcess(
@@ -167,21 +181,32 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isProcessing }) 
     }
 
     try {
-      // Read file content
-      const fileContent = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            resolve(e.target.result as string);
-          } else {
-            reject(new Error('Failed to read file'));
-          }
-        };
-        reader.onerror = reject;
-        reader.readAsText(file);
-      });
-      
-      await processContent(fileContent, 'file', file.name);
+      // Read file as text for text files only
+      if (file.type.includes('text') || 
+          file.name.endsWith('.txt') || 
+          file.name.endsWith('.md')) {
+        const fileContent = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            if (e.target?.result) {
+              resolve(e.target.result as string);
+            } else {
+              reject(new Error('Failed to read file'));
+            }
+          };
+          reader.onerror = reject;
+          reader.readAsText(file);
+        });
+        
+        await processContent(fileContent, 'file', file.name);
+      } else {
+        // For non-text files, we'd need a different approach
+        toast({
+          title: "File type not supported",
+          description: "Currently only text files (.txt) are supported",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error('Error reading file:', error);
       toast({

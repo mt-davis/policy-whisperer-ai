@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
@@ -28,15 +27,18 @@ serve(async (req) => {
 
     console.log('Processing policy document with content length:', content.length);
 
+    // Sanitize content to remove null bytes and other problematic characters
+    const sanitizedContent = sanitizeContent(content);
+    
     // Generate summary and key points using OpenAI
-    const summaryData = await generateSummary(content);
+    const summaryData = await generateSummary(sanitizedContent);
     
     // Store the policy document in the database
     const { data: document, error: documentError } = await supabase
       .from('policy_documents')
       .insert({
         title: title || 'Untitled Policy Document',
-        content,
+        content: sanitizedContent,
         source_type: sourceType,
         source_reference: sourceReference || null,
         key_summary: summaryData.keySummary,
@@ -48,6 +50,7 @@ serve(async (req) => {
       .single();
 
     if (documentError) {
+      console.error('Error inserting document:', documentError);
       throw documentError;
     }
 
@@ -62,6 +65,7 @@ serve(async (req) => {
       .single();
 
     if (conversationError) {
+      console.error('Error creating conversation:', conversationError);
       throw conversationError;
     }
 
@@ -75,6 +79,7 @@ serve(async (req) => {
       });
 
     if (messageError) {
+      console.error('Error creating initial message:', messageError);
       throw messageError;
     }
 
@@ -93,6 +98,25 @@ serve(async (req) => {
     });
   }
 });
+
+// Function to sanitize content before inserting into the database
+function sanitizeContent(content: string): string {
+  if (typeof content !== 'string') {
+    return String(content);
+  }
+  
+  // Remove null bytes and other problematic characters
+  return content
+    .replace(/\u0000/g, '') // Remove null bytes
+    .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[^\x00-\x7F]/g, char => {
+      // Keep common emojis and symbols, replace other unusual Unicode chars
+      try {
+        return encodeURIComponent(char);
+      } catch (e) {
+        return '';
+      }
+    });
+}
 
 async function generateSummary(content: string) {
   try {
