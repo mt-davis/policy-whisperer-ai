@@ -45,6 +45,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     y: number;
     impact?: string;
   } | null>(null);
+  const [selectedStateId, setSelectedStateId] = useState<string | null>(null);
   
   useEffect(() => {
     const fetchMapboxToken = async () => {
@@ -161,6 +162,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       map.current.removeLayer('state-fills');
       map.current.removeLayer('state-borders');
       map.current.removeLayer('state-fills-hover');
+      map.current.removeLayer('state-selected');
       map.current.removeSource('states');
     }
     
@@ -238,6 +240,23 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       }
     });
     
+    map.current.addLayer({
+      id: 'state-selected',
+      type: 'line',
+      source: 'states',
+      layout: {},
+      paint: {
+        'line-color': '#ffffff',
+        'line-width': [
+          'case',
+          ['boolean', ['feature-state', 'selected'], false],
+          3,
+          0
+        ],
+        'line-dasharray': [2, 2]
+      }
+    });
+    
     let hoveredStateId: string | null = null;
     
     map.current.on('mousemove', 'state-fills', (e) => {
@@ -299,8 +318,23 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           const stateCode = stateProps.STATE_ABBR;
           const stateName = stateProps.STATE_NAME;
           
+          if (selectedStateId) {
+            map.current!.setFeatureState(
+              { source: 'states', id: selectedStateId },
+              { selected: false }
+            );
+          }
+          
+          const featureId = feature.id as string;
+          setSelectedStateId(featureId);
+          map.current!.setFeatureState(
+            { source: 'states', id: featureId },
+            { selected: true }
+          );
+          
           if (impactByState[stateCode]) {
             onStateSelect(stateCode, stateName);
+            
             new mapboxgl.Popup({ 
               closeOnClick: false,
               closeButton: false,
@@ -316,6 +350,11 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
                 popups[0].remove();
               }
             }, 1000);
+            
+            toast({
+              title: "State Selected",
+              description: `Showing impact analysis for ${stateName}`,
+            });
           } else {
             toast({
               title: "Generating Data",
@@ -327,6 +366,14 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
         }
       }
     });
+    
+    if (selectedStateId) {
+      map.current.setFeatureState(
+        { source: 'states', id: selectedStateId },
+        { selected: false }
+      );
+      setSelectedStateId(null);
+    }
     
     map.current.fitBounds([
       [-124.848974, 24.396308],
@@ -372,6 +419,13 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
   useEffect(() => {
     if (legislationId && mapLoaded) {
       loadImpactData();
+      if (selectedStateId && map.current) {
+        map.current.setFeatureState(
+          { source: 'states', id: selectedStateId },
+          { selected: false }
+        );
+        setSelectedStateId(null);
+      }
     }
   }, [legislationId, mapLoaded]);
   

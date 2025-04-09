@@ -3,13 +3,14 @@ import React, { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from "@/components/ui/button";
-import { PlusCircle, MapPin, RefreshCw, Map } from "lucide-react";
+import { PlusCircle, MapPin, RefreshCw, Map, Info } from "lucide-react";
 import LegislationSearch from '@/components/LegislationSearch';
 import LegislationForm from '@/components/LegislationForm';
 import ImpactMap from '@/components/ImpactMap';
 import ImpactDetails from '@/components/ImpactDetails';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
 
 const LegislationImpactMap = () => {
   const [selectedLegislation, setSelectedLegislation] = useState<any | null>(null);
@@ -69,6 +70,8 @@ const LegislationImpactMap = () => {
     setSelectedState(null);
   };
   
+  const showInstructions = !selectedLegislation && !selectedState;
+  
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
@@ -84,6 +87,22 @@ const LegislationImpactMap = () => {
               Add Legislation
             </Button>
           </div>
+          
+          {showInstructions && (
+            <Card className="mb-6 bg-blue-50 border-blue-200">
+              <CardContent className="p-4 flex items-start gap-3">
+                <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h3 className="font-medium text-blue-700">How to use this tool</h3>
+                  <p className="text-sm text-blue-600">
+                    1. Search for legislation using the search box on the left<br />
+                    2. Click on a state in the map to see the impact analysis<br />
+                    3. Use the quick access buttons to view popular states
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1 space-y-6">

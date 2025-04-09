@@ -59,6 +59,10 @@ const ImpactDetails: React.FC<ImpactDetailsProps> = ({
         
         if (existingImpact) {
           setImpactData(existingImpact);
+          toast({
+            title: "Analysis Loaded",
+            description: `Showing impact analysis for ${getStateName(stateCode)}.`,
+          });
           return;
         }
         
@@ -289,6 +293,25 @@ const ImpactDetails: React.FC<ImpactDetailsProps> = ({
               </div>
             </CollapsibleContent>
           </Collapsible>
+          
+          {/* New Key Points section */}
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground mb-1">
+              Key Impact Points
+            </h4>
+            <ul className="text-sm space-y-1 pl-2">
+              {(impactData.details || "")
+                .split("\n")
+                .filter((point: string) => point.trim().length > 0)
+                .slice(0, 3)
+                .map((point: string, index: number) => (
+                  <li key={index} className="flex items-start">
+                    <span className="mr-2 text-primary">•</span>
+                    <span>{point.length > 100 ? point.substring(0, 100) + '...' : point}</span>
+                  </li>
+                ))}
+            </ul>
+          </div>
         </div>
       </div>
     );
