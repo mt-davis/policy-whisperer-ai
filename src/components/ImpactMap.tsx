@@ -46,7 +46,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     impact?: string;
   } | null>(null);
   
-  // Try to get mapbox token from Supabase
   useEffect(() => {
     const fetchMapboxToken = async () => {
       try {
@@ -66,14 +65,12 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           }
         }
         
-        // If token not in Supabase, check localStorage as fallback
         const storedToken = localStorage.getItem("mapbox_token");
         if (storedToken) {
           setMapboxToken(storedToken);
         }
       } catch (err) {
         console.error("Error fetching Mapbox token:", err);
-        // Check localStorage as fallback
         const storedToken = localStorage.getItem("mapbox_token");
         if (storedToken) {
           setMapboxToken(storedToken);
@@ -84,7 +81,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     fetchMapboxToken();
   }, []);
   
-  // Load impact data for all states and display on map
   const loadImpactData = async () => {
     if (!legislationId) return;
     
@@ -92,7 +88,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     setError(null);
     
     try {
-      // First check if we already have impact data for this legislation
       const { data: existingImpact, error: fetchError } = await supabase
         .from('legislation_impact')
         .select('*')
@@ -100,14 +95,12 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       
       if (fetchError) throw fetchError;
       
-      // If we have existing data, use it
       if (existingImpact && existingImpact.length > 0) {
         setImpactData(existingImpact);
         updateMapWithImpactData(existingImpact);
         return;
       }
       
-      // Otherwise, generate new impact data
       toast({
         title: "Generating Impact Data",
         description: "This may take a moment. We're analyzing the legislation impact across states.",
@@ -137,7 +130,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
         throw new Error(data.error);
       }
       
-      // Fetch the stored impact data
       const { data: updatedImpact, error: updatedError } = await supabase
         .from('legislation_impact')
         .select('*')
@@ -162,11 +154,9 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     }
   };
   
-  // Update map with impact data
   const updateMapWithImpactData = (impactData: any[]) => {
     if (!map.current || !mapLoaded) return;
     
-    // Clear any existing data
     if (map.current.getSource('states')) {
       map.current.removeLayer('state-fills');
       map.current.removeLayer('state-borders');
@@ -174,19 +164,16 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       map.current.removeSource('states');
     }
     
-    // Create a lookup object for quick access to impact data by state code
     const impactByState: Record<string, any> = {};
     impactData.forEach(impact => {
       impactByState[impact.state_code] = impact;
     });
-
-    // Add the states source
+    
     map.current.addSource('states', {
       type: 'geojson',
       data: 'https://docs.mapbox.com/mapbox-gl-js/assets/us_states.geojson'
     });
     
-    // Add fill layer for states
     map.current.addLayer({
       id: 'state-fills',
       type: 'fill',
@@ -211,7 +198,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       }
     });
     
-    // Add border layer for states
     map.current.addLayer({
       id: 'state-borders',
       type: 'line',
@@ -223,7 +209,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       }
     });
     
-    // Add hover effects
     map.current.addLayer({
       id: 'state-fills-hover',
       type: 'fill',
@@ -253,10 +238,8 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       }
     });
     
-    // Set up hover state
     let hoveredStateId: string | null = null;
     
-    // Add hover effects
     map.current.on('mousemove', 'state-fills', (e) => {
       if (e.features && e.features.length > 0) {
         if (hoveredStateId) {
@@ -273,7 +256,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           { hover: true }
         );
         
-        // Get state information for hover tooltip
         const feature = e.features[0];
         const stateProps = feature.properties;
         
@@ -282,7 +264,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           const stateName = stateProps.STATE_NAME;
           const stateImpact = impactByState[stateCode]?.impact_level || 'none';
           
-          // Set hover state with coordinates
           setHoveredState({
             code: stateCode,
             name: stateName,
@@ -292,12 +273,10 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           });
         }
         
-        // Change cursor to pointer
         map.current!.getCanvas().style.cursor = 'pointer';
       }
     });
     
-    // Reset hover state when mouse leaves
     map.current.on('mouseleave', 'state-fills', () => {
       if (hoveredStateId) {
         map.current!.setFeatureState(
@@ -308,11 +287,9 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       hoveredStateId = null;
       setHoveredState(null);
       
-      // Reset cursor
       map.current!.getCanvas().style.cursor = '';
     });
     
-    // Set up click handler for states
     map.current.on('click', 'state-fills', (e) => {
       if (e.features && e.features.length > 0) {
         const feature = e.features[0];
@@ -322,10 +299,8 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           const stateCode = stateProps.STATE_ABBR;
           const stateName = stateProps.STATE_NAME;
           
-          // If impact data exists for this state, show it
           if (impactByState[stateCode]) {
             onStateSelect(stateCode, stateName);
-            // Add a pulse effect to highlight the selected state
             new mapboxgl.Popup({ 
               closeOnClick: false,
               closeButton: false,
@@ -336,7 +311,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
               .addTo(map.current!);
               
             setTimeout(() => {
-              // Remove all popups after animation
               const popups = document.getElementsByClassName('mapboxgl-popup');
               while(popups[0]) {
                 popups[0].remove();
@@ -348,17 +322,15 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
               description: `Analyzing impact data for ${stateName}. This may take a moment.`,
             });
             
-            // Request generation for this specific state
             onStateSelect(stateCode, stateName);
           }
         }
       }
     });
     
-    // Fit the map to the continental US
     map.current.fitBounds([
-      [-124.848974, 24.396308], // Southwest coordinates
-      [-66.885444, 49.384358]   // Northeast coordinates
+      [-124.848974, 24.396308],
+      [-66.885444, 49.384358]
     ], { padding: 20 });
     
     toast({
@@ -367,28 +339,21 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     });
   };
   
-  // Initialize map
   useEffect(() => {
     if (mapboxToken && !map.current && mapContainer.current) {
-      // Save token to localStorage for future sessions
       localStorage.setItem("mapbox_token", mapboxToken);
-      
-      // Initialize Mapbox
       mapboxgl.accessToken = mapboxToken;
-      
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/light-v11',
-        center: [-98.5795, 39.8283], // Center of US
+        center: [-98.5795, 39.8283],
         zoom: 3,
         minZoom: 2,
         maxZoom: 7
       });
       
-      // Add navigation controls
       map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
       
-      // Set up event listener for when the map is done loading
       map.current.on('load', () => {
         setMapLoaded(true);
         toast({
@@ -397,7 +362,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
         });
       });
       
-      // Clean up on unmount
       return () => {
         map.current?.remove();
         map.current = null;
@@ -405,14 +369,12 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     }
   }, [mapboxToken]);
   
-  // Load impact data when legislation changes and map is ready
   useEffect(() => {
     if (legislationId && mapLoaded) {
       loadImpactData();
     }
   }, [legislationId, mapLoaded]);
   
-  // For development purposes, allow setting a mapbox token
   const promptForMapboxToken = () => {
     const token = prompt("Enter your Mapbox access token to enable the map");
     if (token) {
@@ -424,7 +386,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     }
   };
   
-  // Get impact level color for legend and hover display
   const getImpactColor = (level: string): string => {
     switch (level?.toLowerCase()) {
       case 'high': return IMPACT_COLORS.high;
@@ -482,7 +443,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
               </div>
             )}
             
-            {/* Hover tooltip */}
             {hoveredState && (
               <div 
                 className="absolute pointer-events-none bg-white px-3 py-2 rounded shadow-md border text-xs z-10"
@@ -504,7 +464,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
               </div>
             )}
             
-            {/* Add help tooltip */}
             <div className="absolute top-2 left-2 z-10">
               <TooltipProvider>
                 <Tooltip>
@@ -555,7 +514,8 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
         </div>
       )}
       
-      <style jsx global>{`
+      <style>
+        {`
         .pulse-dot {
           width: 20px;
           height: 20px;
@@ -576,12 +536,12 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
             box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
           }
         }
-      `}</style>
+        `}
+      </style>
     </div>
   );
 };
 
-// Helper function to get state name from code
 function getStateName(stateCode: string): string {
   const stateMap: Record<string, string> = {
     "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
