@@ -41,6 +41,92 @@ export type Database = {
           },
         ]
       }
+      legislation: {
+        Row: {
+          content: string
+          created_at: string
+          date_enacted: string | null
+          date_introduced: string | null
+          description: string | null
+          id: string
+          level: string
+          source_url: string | null
+          state: string | null
+          status: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          date_enacted?: string | null
+          date_introduced?: string | null
+          description?: string | null
+          id?: string
+          level: string
+          source_url?: string | null
+          state?: string | null
+          status?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          date_enacted?: string | null
+          date_introduced?: string | null
+          description?: string | null
+          id?: string
+          level?: string
+          source_url?: string | null
+          state?: string | null
+          status?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      legislation_impact: {
+        Row: {
+          created_at: string
+          details: string | null
+          id: string
+          impact_level: string
+          legislation_id: string
+          state_code: string
+          summary: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          impact_level: string
+          legislation_id: string
+          state_code: string
+          summary?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          id?: string
+          impact_level?: string
+          legislation_id?: string
+          state_code?: string
+          summary?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legislation_impact_legislation_id_fkey"
+            columns: ["legislation_id"]
+            isOneToOne: false
+            referencedRelation: "legislation"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
