@@ -1,21 +1,72 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, MapPin, RefreshCw, Map } from "lucide-react";
 import LegislationSearch from '@/components/LegislationSearch';
 import LegislationForm from '@/components/LegislationForm';
 import ImpactMap from '@/components/ImpactMap';
 import ImpactDetails from '@/components/ImpactDetails';
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 const LegislationImpactMap = () => {
   const [selectedLegislation, setSelectedLegislation] = useState<any | null>(null);
   const [selectedState, setSelectedState] = useState<{ code: string; name: string } | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Fetch full legislation details when selection changes
+  useEffect(() => {
+    const fetchLegislationDetails = async () => {
+      if (!selectedLegislation?.id) return;
+      
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('legislation')
+          .select('*')
+          .eq('id', selectedLegislation.id)
+          .single();
+        
+        if (error) throw error;
+        
+        if (data) {
+          setSelectedLegislation(prev => ({
+            ...prev,
+            ...data
+          }));
+        }
+      } catch (err) {
+        console.error('Error fetching legislation details:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchLegislationDetails();
+  }, [selectedLegislation?.id]);
   
   const handleStateSelect = (stateCode: string, stateName: string) => {
     setSelectedState({ code: stateCode, name: stateName });
+    toast({
+      title: "State Selected",
+      description: `Showing impact information for ${stateName}`,
+    });
+  };
+  
+  const handleLegislationSelect = (legislation: any) => {
+    setSelectedLegislation(legislation);
+    setSelectedState(null);
+    toast({
+      title: "Legislation Selected",
+      description: `Analyzing impact of "${legislation.title}"`,
+    });
+  };
+  
+  const resetSelection = () => {
+    setSelectedState(null);
   };
   
   return (
@@ -39,10 +90,7 @@ const LegislationImpactMap = () => {
               <div className="bg-white p-4 rounded-lg shadow">
                 <h2 className="text-xl font-semibold mb-4">Find Legislation</h2>
                 <LegislationSearch 
-                  onLegislationSelect={(legislation) => {
-                    setSelectedLegislation(legislation);
-                    setSelectedState(null);
-                  }}
+                  onLegislationSelect={handleLegislationSelect}
                 />
               </div>
               
@@ -51,27 +99,56 @@ const LegislationImpactMap = () => {
                   <h2 className="text-xl font-semibold mb-2">
                     {selectedLegislation.title}
                   </h2>
-                  <p className="text-sm text-muted-foreground mb-2">
+                  <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
                     {selectedLegislation.level.charAt(0).toUpperCase() + selectedLegislation.level.slice(1)} 
-                    {selectedLegislation.state ? ` • ${selectedLegislation.state}` : ''}
+                    {selectedLegislation.state && (
+                      <>
+                        <span className="mx-1">•</span>
+                        <MapPin className="h-3 w-3" />
+                        {selectedLegislation.state}
+                      </>
+                    )}
                   </p>
+                  
+                  {selectedLegislation.status && (
+                    <div className="mb-2">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary/10 text-primary">
+                        Status: {selectedLegislation.status}
+                      </span>
+                    </div>
+                  )}
+                  
                   {selectedLegislation.description && (
                     <p className="text-sm mb-4">
                       {selectedLegislation.description}
                     </p>
                   )}
-                  {selectedLegislation.source_url && (
-                    <div className="mt-2">
+                  
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {selectedLegislation.source_url && (
                       <a 
                         href={selectedLegislation.source_url} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline"
+                        className="text-sm text-primary hover:underline inline-flex items-center gap-1"
                       >
+                        <Map className="h-3 w-3" />
                         View Source
                       </a>
-                    </div>
-                  )}
+                    )}
+                    
+                    {selectedState && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={resetSelection}
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Reset Selection
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

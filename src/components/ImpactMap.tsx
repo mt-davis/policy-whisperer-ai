@@ -1,11 +1,17 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 interface ImpactMapProps {
   legislationId: string | null;
@@ -32,6 +38,13 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [impactData, setImpactData] = useState<any[]>([]);
+  const [hoveredState, setHoveredState] = useState<{
+    code: string;
+    name: string;
+    x: number;
+    y: number;
+    impact?: string;
+  } | null>(null);
   
   // Try to get mapbox token from Supabase
   useEffect(() => {
@@ -83,7 +96,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       const { data: existingImpact, error: fetchError } = await supabase
         .from('legislation_impact')
         .select('*')
-        .eq('legislation_id', legislationId) as { data: any[], error: any };
+        .eq('legislation_id', legislationId);
       
       if (fetchError) throw fetchError;
       
@@ -95,6 +108,11 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       }
       
       // Otherwise, generate new impact data
+      toast({
+        title: "Generating Impact Data",
+        description: "This may take a moment. We're analyzing the legislation impact across states.",
+      });
+      
       const response = await fetch(
         "https://cyzpqzvrssgamdtqvyze.supabase.co/functions/v1/analyze-legislation-impact",
         {
@@ -123,7 +141,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       const { data: updatedImpact, error: updatedError } = await supabase
         .from('legislation_impact')
         .select('*')
-        .eq('legislation_id', legislationId) as { data: any[], error: any };
+        .eq('legislation_id', legislationId);
       
       if (updatedError) throw updatedError;
       
@@ -255,6 +273,25 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           { hover: true }
         );
         
+        // Get state information for hover tooltip
+        const feature = e.features[0];
+        const stateProps = feature.properties;
+        
+        if (stateProps && stateProps.STATE_ABBR) {
+          const stateCode = stateProps.STATE_ABBR;
+          const stateName = stateProps.STATE_NAME;
+          const stateImpact = impactByState[stateCode]?.impact_level || 'none';
+          
+          // Set hover state with coordinates
+          setHoveredState({
+            code: stateCode,
+            name: stateName,
+            impact: stateImpact,
+            x: e.point.x,
+            y: e.point.y
+          });
+        }
+        
         // Change cursor to pointer
         map.current!.getCanvas().style.cursor = 'pointer';
       }
@@ -269,6 +306,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
         );
       }
       hoveredStateId = null;
+      setHoveredState(null);
       
       // Reset cursor
       map.current!.getCanvas().style.cursor = '';
@@ -283,7 +321,36 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
         if (stateProps && stateProps.STATE_ABBR) {
           const stateCode = stateProps.STATE_ABBR;
           const stateName = stateProps.STATE_NAME;
-          onStateSelect(stateCode, stateName);
+          
+          // If impact data exists for this state, show it
+          if (impactByState[stateCode]) {
+            onStateSelect(stateCode, stateName);
+            // Add a pulse effect to highlight the selected state
+            new mapboxgl.Popup({ 
+              closeOnClick: false,
+              closeButton: false,
+              className: 'bg-transparent border-none shadow-none'
+            })
+              .setLngLat(e.lngLat)
+              .setHTML(`<div class="pulse-dot"></div>`)
+              .addTo(map.current!);
+              
+            setTimeout(() => {
+              // Remove all popups after animation
+              const popups = document.getElementsByClassName('mapboxgl-popup');
+              while(popups[0]) {
+                popups[0].remove();
+              }
+            }, 1000);
+          } else {
+            toast({
+              title: "Generating Data",
+              description: `Analyzing impact data for ${stateName}. This may take a moment.`,
+            });
+            
+            // Request generation for this specific state
+            onStateSelect(stateCode, stateName);
+          }
         }
       }
     });
@@ -357,6 +424,17 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     }
   };
   
+  // Get impact level color for legend and hover display
+  const getImpactColor = (level: string): string => {
+    switch (level?.toLowerCase()) {
+      case 'high': return IMPACT_COLORS.high;
+      case 'medium': return IMPACT_COLORS.medium;
+      case 'low': return IMPACT_COLORS.low;
+      case 'neutral': return IMPACT_COLORS.neutral;
+      default: return IMPACT_COLORS.none;
+    }
+  };
+  
   return (
     <div className="space-y-4">
       <div className="bg-muted rounded-md p-4">
@@ -403,6 +481,44 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
                 </p>
               </div>
             )}
+            
+            {/* Hover tooltip */}
+            {hoveredState && (
+              <div 
+                className="absolute pointer-events-none bg-white px-3 py-2 rounded shadow-md border text-xs z-10"
+                style={{ 
+                  left: hoveredState.x + 10, 
+                  top: hoveredState.y - 30 
+                }}
+              >
+                <p className="font-semibold">{hoveredState.name} ({hoveredState.code})</p>
+                {hoveredState.impact && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: getImpactColor(hoveredState.impact) }}
+                    />
+                    <span className="capitalize">{hoveredState.impact} impact</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Add help tooltip */}
+            <div className="absolute top-2 left-2 z-10">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="bg-white p-1.5 rounded-full shadow-md cursor-help">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[300px]">
+                    <p>Click on a state to view detailed impact analysis. States are colored by impact level.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
         )}
       </div>
@@ -422,19 +538,45 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       )}
       
       {legislationId && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-          {["CA", "TX", "NY", "FL", "IL"].map((code) => (
-            <Button 
-              key={code}
-              variant="outline" 
-              size="sm"
-              onClick={() => onStateSelect(code, getStateName(code))}
-            >
-              {code}
-            </Button>
-          ))}
+        <div>
+          <h3 className="text-sm font-medium mb-2">Quick Access States</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            {["CA", "TX", "NY", "FL", "IL"].map((code) => (
+              <Button 
+                key={code}
+                variant="outline" 
+                size="sm"
+                onClick={() => onStateSelect(code, getStateName(code))}
+              >
+                {code}
+              </Button>
+            ))}
+          </div>
         </div>
       )}
+      
+      <style jsx global>{`
+        .pulse-dot {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.7);
+          box-shadow: 0 0 0 rgba(255, 255, 255, 0.7);
+          animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+          }
+          70% {
+            box-shadow: 0 0 0 20px rgba(255, 255, 255, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+          }
+        }
+      `}</style>
     </div>
   );
 };
