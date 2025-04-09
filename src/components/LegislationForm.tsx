@@ -88,8 +88,7 @@ const LegislationForm: React.FC<LegislationFormProps> = ({
           source_url: values.sourceUrl || null,
           content: values.content,
         })
-        .select()
-        .single();
+        .select() as { data: any, error: any };
       
       if (error) throw error;
       
@@ -102,7 +101,7 @@ const LegislationForm: React.FC<LegislationFormProps> = ({
       onOpenChange(false);
       
       if (onSuccess && data) {
-        onSuccess(data);
+        onSuccess(data[0]);
       }
     } catch (error: any) {
       console.error("Error adding legislation:", error);

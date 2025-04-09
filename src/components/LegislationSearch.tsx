@@ -34,7 +34,7 @@ const LegislationSearch: React.FC<LegislationSearchProps> = ({
         .from('legislation')
         .select('*')
         .ilike('title', `%${searchQuery}%`)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false }) as { data: any[], error: any };
 
       if (error) throw error;
       

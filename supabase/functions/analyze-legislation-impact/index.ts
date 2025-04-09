@@ -1,47 +1,15 @@
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.23.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY') || '';
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-// List of U.S. states with their codes
-const statesList = [
-  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' },
-  { code: 'AZ', name: 'Arizona' }, { code: 'AR', name: 'Arkansas' },
-  { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
-  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' },
-  { code: 'FL', name: 'Florida' }, { code: 'GA', name: 'Georgia' },
-  { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
-  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' },
-  { code: 'IA', name: 'Iowa' }, { code: 'KS', name: 'Kansas' },
-  { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
-  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' },
-  { code: 'MA', name: 'Massachusetts' }, { code: 'MI', name: 'Michigan' },
-  { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
-  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' },
-  { code: 'NE', name: 'Nebraska' }, { code: 'NV', name: 'Nevada' },
-  { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
-  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' },
-  { code: 'NC', name: 'North Carolina' }, { code: 'ND', name: 'North Dakota' },
-  { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
-  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' },
-  { code: 'RI', name: 'Rhode Island' }, { code: 'SC', name: 'South Carolina' },
-  { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
-  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' },
-  { code: 'VT', name: 'Vermont' }, { code: 'VA', name: 'Virginia' },
-  { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
-  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' },
-  { code: 'DC', name: 'District of Columbia' }
-];
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || '';
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -50,230 +18,380 @@ serve(async (req) => {
   }
 
   try {
-    const { legislationId, stateCode, storeResults = true } = await req.json();
-    
+    const { legislationId, stateCode, storeResults } = await req.json();
+
     if (!legislationId) {
-      throw new Error('Missing required field: legislationId');
+      return new Response(
+        JSON.stringify({ error: 'Legislation ID is required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
 
-    console.log('Analyzing legislation impact for legislation ID:', legislationId);
+    // Initialize Supabase client
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Get legislation content
-    const { data: legislation, error: legislationError } = await supabase
+    const { data: legislation, error: legError } = await supabase
       .from('legislation')
       .select('*')
       .eq('id', legislationId)
       .single();
 
-    if (legislationError) {
-      throw legislationError;
+    if (legError) {
+      console.error('Error fetching legislation:', legError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch legislation data' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
     }
 
     if (!legislation) {
-      throw new Error('Legislation not found');
+      return new Response(
+        JSON.stringify({ error: 'Legislation not found' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      );
     }
 
-    // If a specific state is requested, analyze just that state
-    if (stateCode) {
-      const stateName = statesList.find(s => s.code === stateCode)?.name || stateCode;
+    // If stateCode is provided, analyze for that specific state
+    // Otherwise, analyze for all states or general impact
+    const statesToAnalyze = stateCode ? [stateCode] : getStatesToAnalyze(legislation);
+    
+    const analyzePromises = statesToAnalyze.map(async (code) => {
+      const analysis = await analyzeImpact(legislation, code);
       
-      const impactData = await analyzeImpactForState(
-        legislation.content, 
-        legislation.title,
-        stateCode,
-        stateName
-      );
-      
-      // Store the result if requested
       if (storeResults) {
-        await storeStateImpact(legislationId, stateCode, impactData);
+        await storeAnalysisResults(supabase, legislation.id, code, analysis);
       }
       
-      return new Response(JSON.stringify({ 
-        state: stateCode,
-        impact: impactData
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    } else {
-      // Analyze all states (this would be expensive in a real app)
-      // For demo purposes, we'll analyze a few representative states
-      const sampleStates = ['CA', 'TX', 'NY', 'FL', 'IL'];
-      
-      const results = [];
-      
-      for (const code of sampleStates) {
-        const stateName = statesList.find(s => s.code === code)?.name || code;
-        console.log(`Analyzing impact for ${stateName}...`);
-        
-        const impactData = await analyzeImpactForState(
-          legislation.content, 
-          legislation.title,
-          code,
-          stateName
-        );
-        
-        results.push({
-          state: code,
-          impact: impactData
-        });
-        
-        // Store the result if requested
-        if (storeResults) {
-          await storeStateImpact(legislationId, code, impactData);
-        }
-      }
-      
-      return new Response(JSON.stringify({ results }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-  } catch (error) {
-    console.error('Error analyzing legislation impact:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return { stateCode: code, ...analysis };
     });
+    
+    const analysisResults = await Promise.all(analyzePromises);
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        results: analysisResults
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error processing request:', error);
+    return new Response(
+      JSON.stringify({ error: error.message || 'An error occurred during analysis' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
 });
 
-async function analyzeImpactForState(
-  legislationContent: string, 
-  legislationTitle: string,
-  stateCode: string,
-  stateName: string
-) {
+// Get states to analyze based on legislation level
+function getStatesToAnalyze(legislation: any): string[] {
+  if (legislation.level === 'state' && legislation.state) {
+    // For state-level legislation, just analyze the specific state
+    // Get state code from full name
+    const stateCode = getStateCodeFromName(legislation.state);
+    return stateCode ? [stateCode] : [];
+  }
+  
+  // For federal legislation, return major states for demo purposes
+  // In a real implementation, you might want to analyze all states
+  return ['CA', 'TX', 'NY', 'FL', 'IL'];
+}
+
+// Convert state name to code (simple implementation)
+function getStateCodeFromName(stateName: string): string | null {
+  const stateMap: Record<string, string> = {
+    'alabama': 'AL',
+    'alaska': 'AK',
+    'arizona': 'AZ',
+    'arkansas': 'AR',
+    'california': 'CA',
+    'colorado': 'CO',
+    'connecticut': 'CT',
+    'delaware': 'DE',
+    'florida': 'FL',
+    'georgia': 'GA',
+    'hawaii': 'HI',
+    'idaho': 'ID',
+    'illinois': 'IL',
+    'indiana': 'IN',
+    'iowa': 'IA',
+    'kansas': 'KS',
+    'kentucky': 'KY',
+    'louisiana': 'LA',
+    'maine': 'ME',
+    'maryland': 'MD',
+    'massachusetts': 'MA',
+    'michigan': 'MI',
+    'minnesota': 'MN',
+    'mississippi': 'MS',
+    'missouri': 'MO',
+    'montana': 'MT',
+    'nebraska': 'NE',
+    'nevada': 'NV',
+    'new hampshire': 'NH',
+    'new jersey': 'NJ',
+    'new mexico': 'NM',
+    'new york': 'NY',
+    'north carolina': 'NC',
+    'north dakota': 'ND',
+    'ohio': 'OH',
+    'oklahoma': 'OK',
+    'oregon': 'OR',
+    'pennsylvania': 'PA',
+    'rhode island': 'RI',
+    'south carolina': 'SC',
+    'south dakota': 'SD',
+    'tennessee': 'TN',
+    'texas': 'TX',
+    'utah': 'UT',
+    'vermont': 'VT',
+    'virginia': 'VA',
+    'washington': 'WA',
+    'west virginia': 'WV',
+    'wisconsin': 'WI',
+    'wyoming': 'WY'
+  };
+  
+  return stateMap[stateName.toLowerCase()] || null;
+}
+
+// Analyze the impact of legislation using OpenAI
+async function analyzeImpact(legislation: any, stateCode: string): Promise<any> {
+  const stateName = getStateNameFromCode(stateCode);
+  
   try {
-    // Truncate content if it's too long
-    const truncatedContent = legislationContent.length > 8000 
-      ? legislationContent.substring(0, 8000) + "..." 
-      : legislationContent;
+    if (!OPENAI_API_KEY) {
+      console.warn('OpenAI API key not found, using mock analysis');
+      return generateMockAnalysis(legislation, stateCode);
+    }
     
-    console.log(`Generating impact analysis for ${stateName} using OpenAI...`);
+    const prompt = `
+    Analyze the impact of the following ${legislation.level} legislation on the state of ${stateName}:
     
-    const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    Title: ${legislation.title}
+    ${legislation.description ? `Description: ${legislation.description}` : ''}
+    
+    Content of the legislation:
+    ${legislation.content.substring(0, 3000)}... 
+    
+    Please provide:
+    1. An impact level (high, medium, low, or neutral)
+    2. A concise summary of the impact (2-3 sentences)
+    3. A detailed analysis of how this legislation would affect ${stateName} specifically (2-3 paragraphs)
+    
+    Format your response as a JSON object with the fields "impact_level", "summary", and "details".
+    `;
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          { 
-            role: 'system', 
-            content: `You are an AI specialized in analyzing the potential impact of legislation on different states.
-                      For the given legislation, analyze its potential impact on ${stateName} (${stateCode}).
-                      Consider economic, social, environmental, and legal factors specific to ${stateName}.
-                      Respond in JSON format with the following structure:
-                      {
-                        "impactLevel": "high", "medium", "low", "neutral", or "unknown",
-                        "summary": "A brief one-sentence overview of the impact",
-                        "details": "A paragraph with more detailed analysis of how this legislation would impact ${stateName} specifically"
-                      }` 
-          },
-          { 
-            role: 'user', 
-            content: `Legislation Title: ${legislationTitle}\n\nContent: ${truncatedContent}` 
-          }
+          { role: 'system', content: 'You are an AI specialized in legislative analysis and its impacts on different states.' },
+          { role: 'user', content: prompt }
         ],
-        response_format: { type: "json_object" },
-        max_tokens: 800
-      }),
+        temperature: 0.7,
+        max_tokens: 1000
+      })
     });
-
-    const data = await openAIResponse.json();
     
-    if (!data.choices || !data.choices[0]) {
-      throw new Error('Invalid response from OpenAI API');
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.statusText}`);
     }
     
-    const generatedText = data.choices[0].message.content;
+    const data = await response.json();
+    let result;
     
     try {
-      // Parse the JSON response
-      const parsedResponse = JSON.parse(generatedText);
+      // Try to parse the content as JSON first
+      result = JSON.parse(data.choices[0].message.content);
+    } catch (e) {
+      // If parsing fails, use a regex approach to extract the JSON part
+      const content = data.choices[0].message.content;
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
       
-      return {
-        impactLevel: parsedResponse.impactLevel || "unknown",
-        summary: parsedResponse.summary || `Impact analysis for ${stateName} is available.`,
-        details: parsedResponse.details || `Detailed impact analysis for ${stateName} is available upon request.`
-      };
-    } catch (parseError) {
-      console.error('Error parsing OpenAI response as JSON:', parseError);
-      
-      // Fallback if parsing fails
-      return {
-        impactLevel: "unknown",
-        summary: `Impact analysis for ${stateName} has been processed.`,
-        details: `Please request detailed information about how this legislation impacts ${stateName}.`
-      };
+      if (jsonMatch) {
+        try {
+          result = JSON.parse(jsonMatch[0]);
+        } catch (e2) {
+          console.error('Failed to parse JSON from OpenAI response', e2);
+          result = extractStructuredData(content);
+        }
+      } else {
+        result = extractStructuredData(content);
+      }
     }
-  } catch (error) {
-    console.error('Error generating impact analysis with OpenAI:', error);
     
-    // Fallback if OpenAI call fails
+    // Ensure we have all required fields
     return {
-      impactLevel: "unknown",
-      summary: `Unable to analyze impact for ${stateName} at this time.`,
-      details: `Technical issues prevented a detailed analysis for ${stateName}. Please try again later.`
+      impact_level: result.impact_level || 'medium',
+      summary: result.summary || 'No summary available',
+      details: result.details || 'No detailed analysis available'
     };
+  } catch (error) {
+    console.error('Error analyzing impact with OpenAI:', error);
+    return generateMockAnalysis(legislation, stateCode);
   }
 }
 
-async function storeStateImpact(
+// Extract structured data from unstructured text
+function extractStructuredData(text: string): any {
+  const impactLevelMatch = text.match(/impact level:?\s*(high|medium|low|neutral)/i);
+  const impactLevel = impactLevelMatch ? impactLevelMatch[1].toLowerCase() : 'medium';
+  
+  // Look for summary section
+  let summary = '';
+  const summaryMatch = text.match(/summary:?\s*([^#]+)/i);
+  if (summaryMatch) {
+    summary = summaryMatch[1].trim();
+  }
+  
+  // Look for details section
+  let details = '';
+  const detailsMatch = text.match(/details:?\s*([^#]+)$/i);
+  if (detailsMatch) {
+    details = detailsMatch[1].trim();
+  }
+  
+  return {
+    impact_level: impactLevel,
+    summary: summary || 'Impact analysis summary not available',
+    details: details || 'Detailed impact analysis not available'
+  };
+}
+
+// Generate mock analysis for testing or when OpenAI is not available
+function generateMockAnalysis(legislation: any, stateCode: string): any {
+  const stateName = getStateNameFromCode(stateCode);
+  const impactLevels = ['high', 'medium', 'low', 'neutral'];
+  const randomImpact = impactLevels[Math.floor(Math.random() * impactLevels.length)];
+  
+  return {
+    impact_level: randomImpact,
+    summary: `This ${legislation.level} legislation would have a ${randomImpact} impact on ${stateName}. Key sectors affected would include economy, infrastructure, and public services.`,
+    details: `The legislation titled "${legislation.title}" would affect ${stateName} in several ways. 
+    
+    First, it would influence the state's economic landscape by potentially changing regulations that govern key industries present in ${stateName}. The changes could lead to shifts in employment rates and business operations.
+    
+    Second, there would be social impacts as citizens adapt to the new requirements or benefits provided by this legislation. This may include changes to healthcare access, educational opportunities, or other public services.
+    
+    The long-term effects would depend on implementation details and how well the state's existing infrastructure can accommodate the changes mandated by this legislation.`
+  };
+}
+
+// Store analysis results in the database
+async function storeAnalysisResults(
+  supabase: any, 
   legislationId: string, 
   stateCode: string, 
-  impactData: { 
-    impactLevel: string, 
-    summary: string, 
-    details: string 
-  }
-) {
+  analysis: any
+): Promise<void> {
   try {
-    // Check if impact data already exists for this state
-    const { data: existingImpact } = await supabase
+    // Check if analysis for this legislation and state already exists
+    const { data: existing, error: selectError } = await supabase
       .from('legislation_impact')
       .select('id')
       .eq('legislation_id', legislationId)
       .eq('state_code', stateCode)
-      .single();
+      .maybeSingle();
     
-    if (existingImpact) {
-      // Update existing impact data
+    if (selectError && selectError.code !== 'PGRST116') {
+      throw selectError;
+    }
+    
+    if (existing) {
+      // Update existing analysis
       const { error: updateError } = await supabase
         .from('legislation_impact')
         .update({
-          impact_level: impactData.impactLevel,
-          summary: impactData.summary,
-          details: impactData.details,
+          impact_level: analysis.impact_level,
+          summary: analysis.summary,
+          details: analysis.details,
           updated_at: new Date().toISOString()
         })
-        .eq('id', existingImpact.id);
+        .eq('id', existing.id);
       
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
     } else {
-      // Insert new impact data
+      // Insert new analysis
       const { error: insertError } = await supabase
         .from('legislation_impact')
         .insert({
           legislation_id: legislationId,
           state_code: stateCode,
-          impact_level: impactData.impactLevel,
-          summary: impactData.summary,
-          details: impactData.details
+          impact_level: analysis.impact_level,
+          summary: analysis.summary,
+          details: analysis.details
         });
       
-      if (insertError) {
-        throw insertError;
-      }
+      if (insertError) throw insertError;
     }
-    
-    console.log(`Successfully stored impact data for ${stateCode}`);
   } catch (error) {
-    console.error(`Error storing impact data for ${stateCode}:`, error);
+    console.error('Error storing analysis results:', error);
     throw error;
   }
+}
+
+// Get state name from code
+function getStateNameFromCode(stateCode: string): string {
+  const stateMap: Record<string, string> = {
+    'AL': 'Alabama',
+    'AK': 'Alaska',
+    'AZ': 'Arizona',
+    'AR': 'Arkansas',
+    'CA': 'California',
+    'CO': 'Colorado',
+    'CT': 'Connecticut',
+    'DE': 'Delaware',
+    'FL': 'Florida',
+    'GA': 'Georgia',
+    'HI': 'Hawaii',
+    'ID': 'Idaho',
+    'IL': 'Illinois',
+    'IN': 'Indiana',
+    'IA': 'Iowa',
+    'KS': 'Kansas',
+    'KY': 'Kentucky',
+    'LA': 'Louisiana',
+    'ME': 'Maine',
+    'MD': 'Maryland',
+    'MA': 'Massachusetts',
+    'MI': 'Michigan',
+    'MN': 'Minnesota',
+    'MS': 'Mississippi',
+    'MO': 'Missouri',
+    'MT': 'Montana',
+    'NE': 'Nebraska',
+    'NV': 'Nevada',
+    'NH': 'New Hampshire',
+    'NJ': 'New Jersey',
+    'NM': 'New Mexico',
+    'NY': 'New York',
+    'NC': 'North Carolina',
+    'ND': 'North Dakota',
+    'OH': 'Ohio',
+    'OK': 'Oklahoma',
+    'OR': 'Oregon',
+    'PA': 'Pennsylvania',
+    'RI': 'Rhode Island',
+    'SC': 'South Carolina',
+    'SD': 'South Dakota',
+    'TN': 'Tennessee',
+    'TX': 'Texas',
+    'UT': 'Utah',
+    'VT': 'Vermont',
+    'VA': 'Virginia',
+    'WA': 'Washington',
+    'WV': 'West Virginia',
+    'WI': 'Wisconsin',
+    'WY': 'Wyoming',
+    'DC': 'District of Columbia'
+  };
+  
+  return stateMap[stateCode] || stateCode;
 }

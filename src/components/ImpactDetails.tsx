@@ -36,7 +36,7 @@ const ImpactDetails: React.FC<ImpactDetailsProps> = ({
           .from('legislation')
           .select('*')
           .eq('id', legislationId)
-          .single();
+          .single() as { data: any, error: any };
         
         if (legError) throw legError;
         setLegislation(legData);
@@ -47,7 +47,7 @@ const ImpactDetails: React.FC<ImpactDetailsProps> = ({
           .select('*')
           .eq('legislation_id', legislationId)
           .eq('state_code', stateCode)
-          .single();
+          .single() as { data: any, error: any };
         
         if (impactError && impactError.code !== 'PGRST116') { // Not found is ok
           throw impactError;
@@ -64,8 +64,7 @@ const ImpactDetails: React.FC<ImpactDetailsProps> = ({
           {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${supabase.auth.session()?.access_token || ""}`
+              "Content-Type": "application/json"
             },
             body: JSON.stringify({ 
               legislationId,
@@ -91,7 +90,7 @@ const ImpactDetails: React.FC<ImpactDetailsProps> = ({
           .select('*')
           .eq('legislation_id', legislationId)
           .eq('state_code', stateCode)
-          .single();
+          .single() as { data: any, error: any };
         
         if (newImpactError) throw newImpactError;
         setImpactData(newImpact);

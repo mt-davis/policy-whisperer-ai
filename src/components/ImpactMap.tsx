@@ -4,9 +4,6 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
-// Note to implementer: You'll need to add mapbox-gl to your project
-// and set up a Mapbox API key in your Supabase Edge Function secrets
-
 interface ImpactMapProps {
   legislationId: string | null;
   onStateSelect: (stateCode: string, stateName: string) => void;
@@ -37,7 +34,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       const { data: existingImpact, error: fetchError } = await supabase
         .from('legislation_impact')
         .select('*')
-        .eq('legislation_id', legislationId);
+        .eq('legislation_id', legislationId) as { data: any[], error: any };
       
       if (fetchError) throw fetchError;
       
@@ -53,8 +50,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabase.auth.session()?.access_token || ""}`
+            "Content-Type": "application/json"
           },
           body: JSON.stringify({ 
             legislationId,
@@ -77,7 +73,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       const { data: updatedImpact, error: updatedError } = await supabase
         .from('legislation_impact')
         .select('*')
-        .eq('legislation_id', legislationId);
+        .eq('legislation_id', legislationId) as { data: any[], error: any };
       
       if (updatedError) throw updatedError;
       
