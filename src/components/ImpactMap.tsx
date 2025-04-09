@@ -1,10 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
+
+import React, { useState, useEffect, memo } from 'react';
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import { 
+  ComposableMap,
+  Geographies,
+  Geography,
+  ZoomableGroup
+} from "react-simple-maps";
 import { 
   Tooltip,
   TooltipContent,
@@ -12,6 +17,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+
+// Import US states GeoJSON
+import usaStates from '../data/us-states.json';
 
 interface ImpactMapProps {
   legislationId: string | null;
@@ -31,56 +39,15 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
   legislationId, 
   onStateSelect 
 }) => {
-  const mapContainer = useRef<HTMLDivElement | null>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [impactData, setImpactData] = useState<any[]>([]);
   const [hoveredState, setHoveredState] = useState<{
     code: string;
     name: string;
-    x: number;
-    y: number;
     impact?: string;
   } | null>(null);
   const [selectedStateId, setSelectedStateId] = useState<string | null>(null);
-  
-  useEffect(() => {
-    const fetchMapboxToken = async () => {
-      try {
-        const response = await fetch(
-          "https://cyzpqzvrssgamdtqvyze.supabase.co/functions/v1/fetch-mapbox-token",
-          { 
-            method: "GET",
-            headers: { "Content-Type": "application/json" }
-          }
-        );
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.token) {
-            setMapboxToken(data.token);
-            return;
-          }
-        }
-        
-        const storedToken = localStorage.getItem("mapbox_token");
-        if (storedToken) {
-          setMapboxToken(storedToken);
-        }
-      } catch (err) {
-        console.error("Error fetching Mapbox token:", err);
-        const storedToken = localStorage.getItem("mapbox_token");
-        if (storedToken) {
-          setMapboxToken(storedToken);
-        }
-      }
-    };
-    
-    fetchMapboxToken();
-  }, []);
   
   const loadImpactData = async () => {
     if (!legislationId) return;
@@ -98,7 +65,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       
       if (existingImpact && existingImpact.length > 0) {
         setImpactData(existingImpact);
-        updateMapWithImpactData(existingImpact);
         return;
       }
       
@@ -140,7 +106,6 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
       
       if (updatedImpact && updatedImpact.length > 0) {
         setImpactData(updatedImpact);
-        updateMapWithImpactData(updatedImpact);
       }
     } catch (err: any) {
       console.error('Error loading impact data:', err);
@@ -155,299 +120,75 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
     }
   };
   
-  const updateMapWithImpactData = (impactData: any[]) => {
-    if (!map.current || !mapLoaded) return;
-    
-    if (map.current.getSource('states')) {
-      map.current.removeLayer('state-fills');
-      map.current.removeLayer('state-borders');
-      map.current.removeLayer('state-fills-hover');
-      map.current.removeLayer('state-selected');
-      map.current.removeSource('states');
-    }
-    
-    const impactByState: Record<string, any> = {};
-    impactData.forEach(impact => {
-      impactByState[impact.state_code] = impact;
-    });
-    
-    map.current.addSource('states', {
-      type: 'geojson',
-      data: 'https://docs.mapbox.com/mapbox-gl-js/assets/us_states.geojson'
-    });
-    
-    map.current.addLayer({
-      id: 'state-fills',
-      type: 'fill',
-      source: 'states',
-      layout: {},
-      paint: {
-        'fill-color': [
-          'case',
-          ['has', ['get', 'STATE_ABBR'], ['literal', impactByState]],
-          [
-            'match',
-            ['get', ['get', 'impact_level'], ['literal', impactByState]],
-            'high', IMPACT_COLORS.high,
-            'medium', IMPACT_COLORS.medium,
-            'low', IMPACT_COLORS.low,
-            'neutral', IMPACT_COLORS.neutral,
-            IMPACT_COLORS.none
-          ],
-          IMPACT_COLORS.none
-        ],
-        'fill-opacity': 0.7
-      }
-    });
-    
-    map.current.addLayer({
-      id: 'state-borders',
-      type: 'line',
-      source: 'states',
-      layout: {},
-      paint: {
-        'line-color': '#ffffff',
-        'line-width': 1
-      }
-    });
-    
-    map.current.addLayer({
-      id: 'state-fills-hover',
-      type: 'fill',
-      source: 'states',
-      layout: {},
-      paint: {
-        'fill-color': [
-          'case',
-          ['has', ['get', 'STATE_ABBR'], ['literal', impactByState]],
-          [
-            'match',
-            ['get', ['get', 'impact_level'], ['literal', impactByState]],
-            'high', IMPACT_COLORS.high,
-            'medium', IMPACT_COLORS.medium,
-            'low', IMPACT_COLORS.low,
-            'neutral', IMPACT_COLORS.neutral,
-            IMPACT_COLORS.none
-          ],
-          IMPACT_COLORS.none
-        ],
-        'fill-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          0.9,
-          0
-        ]
-      }
-    });
-    
-    map.current.addLayer({
-      id: 'state-selected',
-      type: 'line',
-      source: 'states',
-      layout: {},
-      paint: {
-        'line-color': '#ffffff',
-        'line-width': [
-          'case',
-          ['boolean', ['feature-state', 'selected'], false],
-          3,
-          0
-        ],
-        'line-dasharray': [2, 2]
-      }
-    });
-    
-    let hoveredStateId: string | null = null;
-    
-    map.current.on('mousemove', 'state-fills', (e) => {
-      if (e.features && e.features.length > 0) {
-        if (hoveredStateId) {
-          map.current!.setFeatureState(
-            { source: 'states', id: hoveredStateId },
-            { hover: false }
-          );
-        }
-        
-        hoveredStateId = e.features[0].id as string;
-        
-        map.current!.setFeatureState(
-          { source: 'states', id: hoveredStateId },
-          { hover: true }
-        );
-        
-        const feature = e.features[0];
-        const stateProps = feature.properties;
-        
-        if (stateProps && stateProps.STATE_ABBR) {
-          const stateCode = stateProps.STATE_ABBR;
-          const stateName = stateProps.STATE_NAME;
-          const stateImpact = impactByState[stateCode]?.impact_level || 'none';
-          
-          setHoveredState({
-            code: stateCode,
-            name: stateName,
-            impact: stateImpact,
-            x: e.point.x,
-            y: e.point.y
-          });
-        }
-        
-        map.current!.getCanvas().style.cursor = 'pointer';
-      }
-    });
-    
-    map.current.on('mouseleave', 'state-fills', () => {
-      if (hoveredStateId) {
-        map.current!.setFeatureState(
-          { source: 'states', id: hoveredStateId },
-          { hover: false }
-        );
-      }
-      hoveredStateId = null;
-      setHoveredState(null);
-      
-      map.current!.getCanvas().style.cursor = '';
-    });
-    
-    map.current.on('click', 'state-fills', (e) => {
-      if (e.features && e.features.length > 0) {
-        const feature = e.features[0];
-        const stateProps = feature.properties;
-        
-        if (stateProps && stateProps.STATE_ABBR) {
-          const stateCode = stateProps.STATE_ABBR;
-          const stateName = stateProps.STATE_NAME;
-          
-          if (selectedStateId) {
-            map.current!.setFeatureState(
-              { source: 'states', id: selectedStateId },
-              { selected: false }
-            );
-          }
-          
-          const featureId = feature.id as string;
-          setSelectedStateId(featureId);
-          map.current!.setFeatureState(
-            { source: 'states', id: featureId },
-            { selected: true }
-          );
-          
-          if (impactByState[stateCode]) {
-            onStateSelect(stateCode, stateName);
-            
-            new mapboxgl.Popup({ 
-              closeOnClick: false,
-              closeButton: false,
-              className: 'bg-transparent border-none shadow-none'
-            })
-              .setLngLat(e.lngLat)
-              .setHTML(`<div class="pulse-dot"></div>`)
-              .addTo(map.current!);
-              
-            setTimeout(() => {
-              const popups = document.getElementsByClassName('mapboxgl-popup');
-              while(popups[0]) {
-                popups[0].remove();
-              }
-            }, 1000);
-            
-            toast({
-              title: "State Selected",
-              description: `Showing impact analysis for ${stateName}`,
-            });
-          } else {
-            toast({
-              title: "Generating Data",
-              description: `Analyzing impact data for ${stateName}. This may take a moment.`,
-            });
-            
-            onStateSelect(stateCode, stateName);
-          }
-        }
-      }
-    });
-    
-    if (selectedStateId) {
-      map.current.setFeatureState(
-        { source: 'states', id: selectedStateId },
-        { selected: false }
-      );
+  // Get impact level for a specific state
+  const getStateImpact = (stateCode: string) => {
+    const stateImpact = impactData.find(impact => impact.state_code === stateCode);
+    return stateImpact?.impact_level || 'none';
+  };
+  
+  // Get state fill color based on impact level
+  const getStateFillColor = (stateCode: string) => {
+    const impactLevel = getStateImpact(stateCode);
+    return IMPACT_COLORS[impactLevel as keyof typeof IMPACT_COLORS] || IMPACT_COLORS.none;
+  };
+  
+  useEffect(() => {
+    if (legislationId) {
+      loadImpactData();
       setSelectedStateId(null);
     }
+  }, [legislationId]);
+  
+  // Function to handle state clicks
+  const handleStateClick = (geo: any) => {
+    const stateCode = geo.properties.ISO_3166_2;
+    const stateName = geo.properties.name;
     
-    map.current.fitBounds([
-      [-124.848974, 24.396308],
-      [-66.885444, 49.384358]
-    ], { padding: 20 });
-    
-    toast({
-      title: "Map Updated",
-      description: `Showing impact data for ${impactData.length} states`,
-    });
-  };
-  
-  useEffect(() => {
-    if (mapboxToken && !map.current && mapContainer.current) {
-      localStorage.setItem("mapbox_token", mapboxToken);
-      mapboxgl.accessToken = mapboxToken;
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/light-v11',
-        center: [-98.5795, 39.8283],
-        zoom: 3,
-        minZoom: 2,
-        maxZoom: 7
-      });
+    if (stateCode) {
+      setSelectedStateId(stateCode);
+      onStateSelect(stateCode, stateName);
       
-      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-      
-      map.current.on('load', () => {
-        setMapLoaded(true);
-        toast({
-          title: "Map Ready",
-          description: "Map is now ready. Select legislation to view impact data.",
-        });
-      });
-      
-      return () => {
-        map.current?.remove();
-        map.current = null;
-      };
-    }
-  }, [mapboxToken]);
-  
-  useEffect(() => {
-    if (legislationId && mapLoaded) {
-      loadImpactData();
-      if (selectedStateId && map.current) {
-        map.current.setFeatureState(
-          { source: 'states', id: selectedStateId },
-          { selected: false }
-        );
-        setSelectedStateId(null);
-      }
-    }
-  }, [legislationId, mapLoaded]);
-  
-  const promptForMapboxToken = () => {
-    const token = prompt("Enter your Mapbox access token to enable the map");
-    if (token) {
-      setMapboxToken(token);
       toast({
-        title: "Token Set",
-        description: "Mapbox token has been set temporarily for this session",
+        title: "State Selected",
+        description: `Showing impact analysis for ${stateName}`,
       });
     }
   };
   
-  const getImpactColor = (level: string): string => {
-    switch (level?.toLowerCase()) {
-      case 'high': return IMPACT_COLORS.high;
-      case 'medium': return IMPACT_COLORS.medium;
-      case 'low': return IMPACT_COLORS.low;
-      case 'neutral': return IMPACT_COLORS.neutral;
-      default: return IMPACT_COLORS.none;
-    }
+  // Function to retry fetching impact data
+  const handleRetry = () => {
+    setError(null);
+    loadImpactData();
+  };
+  
+  const renderLoadingState = () => {
+    return (
+      <div className="p-6 text-center">
+        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+        <p className="font-medium text-primary">Loading Impact Data</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Analyzing legislation impact across states...
+        </p>
+      </div>
+    );
+  };
+  
+  const renderErrorState = () => {
+    return (
+      <div className="p-6 text-center">
+        <div className="flex items-center justify-center text-destructive mb-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <p className="font-medium text-destructive mb-2">{error}</p>
+        <Button onClick={handleRetry} variant="outline">
+          Retry
+        </Button>
+      </div>
+    );
   };
   
   return (
@@ -458,82 +199,117 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
         </div>
         
-        {!mapboxToken ? (
-          <div className="text-center p-6 space-y-3 bg-background rounded-md">
-            <p className="text-sm text-muted-foreground">
-              Mapbox token is required to display the interactive map.
-            </p>
-            <Button onClick={promptForMapboxToken} size="sm">
-              Set Mapbox Token
-            </Button>
-          </div>
-        ) : (
-          <div 
-            ref={mapContainer} 
-            className="h-[400px] bg-background rounded-md border relative"
-          >
-            {!mapLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            )}
-            
-            {error && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-                <div className="text-center p-4">
-                  <p className="text-destructive mb-2">{error}</p>
-                  <Button size="sm" onClick={loadImpactData}>
-                    Retry
-                  </Button>
-                </div>
-              </div>
-            )}
-            
-            {!legislationId && mapLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-                <p className="text-center text-muted-foreground">
-                  Select legislation to view impact data
-                </p>
-              </div>
-            )}
-            
-            {hoveredState && (
-              <div 
-                className="absolute pointer-events-none bg-white px-3 py-2 rounded shadow-md border text-xs z-10"
-                style={{ 
-                  left: hoveredState.x + 10, 
-                  top: hoveredState.y - 30 
-                }}
+        <div className="h-[400px] bg-background rounded-md border relative">
+          {error ? (
+            renderErrorState()
+          ) : loading ? (
+            renderLoadingState()
+          ) : (
+            <>
+              <ComposableMap 
+                projection="geoAlbersUsa"
+                projectionConfig={{ scale: 1000 }}
+                className="w-full h-full"
               >
-                <p className="font-semibold">{hoveredState.name} ({hoveredState.code})</p>
-                {hoveredState.impact && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: getImpactColor(hoveredState.impact) }}
-                    />
-                    <span className="capitalize">{hoveredState.impact} impact</span>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div className="absolute top-2 left-2 z-10">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="bg-white p-1.5 rounded-full shadow-md cursor-help">
-                      <Info className="h-4 w-4 text-muted-foreground" />
+                <ZoomableGroup>
+                  <Geographies geography={usaStates}>
+                    {({ geographies }) =>
+                      geographies.map(geo => {
+                        const stateCode = geo.properties.ISO_3166_2;
+                        const stateName = geo.properties.name;
+                        const isSelected = selectedStateId === stateCode;
+                        return (
+                          <Geography
+                            key={geo.rsmKey}
+                            geography={geo}
+                            onClick={() => handleStateClick(geo)}
+                            onMouseEnter={() => {
+                              setHoveredState({
+                                code: stateCode,
+                                name: stateName,
+                                impact: getStateImpact(stateCode)
+                              });
+                            }}
+                            onMouseLeave={() => {
+                              setHoveredState(null);
+                            }}
+                            style={{
+                              default: {
+                                fill: getStateFillColor(stateCode),
+                                stroke: "#FFFFFF",
+                                strokeWidth: 0.5,
+                                outline: "none"
+                              },
+                              hover: {
+                                fill: getStateFillColor(stateCode),
+                                stroke: "#FFFFFF",
+                                strokeWidth: 1,
+                                outline: "none",
+                                opacity: 0.9
+                              },
+                              pressed: {
+                                fill: getStateFillColor(stateCode),
+                                stroke: "#FFFFFF",
+                                strokeWidth: 2,
+                                outline: "none"
+                              }
+                            }}
+                            className={`cursor-pointer ${isSelected ? 'stroke-2 stroke-white' : ''}`}
+                          />
+                        );
+                      })
+                    }
+                  </Geographies>
+                </ZoomableGroup>
+              </ComposableMap>
+              
+              {!legislationId && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+                  <p className="text-center text-muted-foreground">
+                    Select legislation to view impact data
+                  </p>
+                </div>
+              )}
+              
+              {hoveredState && (
+                <div 
+                  className="absolute pointer-events-none bg-white px-3 py-2 rounded shadow-md border text-xs z-10"
+                  style={{ 
+                    left: '50%', 
+                    top: '10px',
+                    transform: 'translateX(-50%)' 
+                  }}
+                >
+                  <p className="font-semibold">{hoveredState.name} ({hoveredState.code})</p>
+                  {hoveredState.impact && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: IMPACT_COLORS[hoveredState.impact as keyof typeof IMPACT_COLORS] || IMPACT_COLORS.none }}
+                      />
+                      <span className="capitalize">{hoveredState.impact} impact</span>
                     </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[300px]">
-                    <p>Click on a state to view detailed impact analysis. States are colored by impact level.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          
+          <div className="absolute top-2 left-2 z-10">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="bg-white p-1.5 rounded-full shadow-md cursor-help">
+                    <Info className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[300px]">
+                  <p>Click on a state to view detailed impact analysis. States are colored by impact level.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
-        )}
+        </div>
       </div>
       
       {legislationId && impactData.length > 0 && (
@@ -560,6 +336,7 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
                 variant="outline" 
                 size="sm"
                 onClick={() => onStateSelect(code, getStateName(code))}
+                className={selectedStateId === code ? "border-primary bg-primary/10" : ""}
               >
                 {code}
               </Button>
@@ -567,35 +344,11 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
           </div>
         </div>
       )}
-      
-      <style>
-        {`
-        .pulse-dot {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: rgba(255, 255, 255, 0.7);
-          box-shadow: 0 0 0 rgba(255, 255, 255, 0.7);
-          animation: pulse 1s infinite;
-        }
-        
-        @keyframes pulse {
-          0% {
-            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
-          }
-          70% {
-            box-shadow: 0 0 0 20px rgba(255, 255, 255, 0);
-          }
-          100% {
-            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
-          }
-        }
-        `}
-      </style>
     </div>
   );
 };
 
+// Function to get state name from state code
 function getStateName(stateCode: string): string {
   const stateMap: Record<string, string> = {
     "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
@@ -616,4 +369,4 @@ function getStateName(stateCode: string): string {
   return stateMap[stateCode] || stateCode;
 }
 
-export default ImpactMap;
+export default memo(ImpactMap);
