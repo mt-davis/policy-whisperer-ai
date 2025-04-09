@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, memo } from 'react';
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Info } from "lucide-react";
@@ -208,8 +207,10 @@ const ImpactMap: React.FC<ImpactMapProps> = ({
             <>
               <ComposableMap 
                 projection="geoAlbersUsa"
-                projectionConfig={{ scale: 1000 }}
+                projectionConfig={{ scale: 1000, center: [0, 0] }}
                 className="w-full h-full"
+                width={800}
+                height={400}
               >
                 <ZoomableGroup>
                   <Geographies geography={usaStates}>
